@@ -25,6 +25,49 @@ class SOCKS5Server(SOCKS5Base):
     def __init__(self, host=const.NONSPEC_HOST, port=const.DEFAULT_SERVER_PORT):
         super().__init__(host, port, const.MODE_SERVER)
 
+    def _perform_version_handshake(self, socket_obj: socket.socket) -> bool:
+        """
+        Perform version handshake to ensure client and server are compatible.
+
+        Args:
+            socks_obj: Socket connected to the peer
+            is_server: True if running in server mode
+
+        Returns:
+            bool: True if versions are compatible
+        """
+        try:
+            # Server: Receive client version and respond
+            data = utils.recv_all(socket_obj, 3)
+            if len(data) < 3:
+                logger.error("Version handshake failed - invalid data length")
+                return False
+
+            client_major, client_minor, client_patch = struct.unpack("!BBB", data)
+            logger.info(f"Client version: {client_major}.{client_minor}.{client_patch}")
+
+            # Check compatibility (major version must match, minor can differ)
+            compatible = client_major == const.APP_VERSION_MAJOR
+
+            # Send server version and compatibility status
+            socket_obj.sendall(
+                struct.pack(
+                    "!BBBB",
+                    const.APP_VERSION_MAJOR,
+                    const.APP_VERSION_MINOR,
+                    const.APP_VERSION_PATCH,
+                    (
+                        const.VERSION_COMPATIBLE
+                        if compatible
+                        else const.VERSION_INCOMPATIBLE
+                    ),
+                )
+            )
+            return compatible
+        except Exception as e:
+            logger.error(f"Version handshake error: {e}")
+        return False
+
     def _connect_to_destination(
         self, client_socket: socket.socket, dest_addr: str, dest_port: int
     ):

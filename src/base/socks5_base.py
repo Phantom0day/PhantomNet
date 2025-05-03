@@ -26,6 +26,7 @@ class SOCKS5Base:
         self.host = host
         self.port = port
         self.mode: str = mode
+        self.is_server = mode == const.MODE_SERVER
         self.running = False
         self.shutting_down = False
         self.threads: List[threading.Thread] = []
@@ -54,7 +55,7 @@ class SOCKS5Base:
 
             self.running = True
             logger.info(f"SOCKS5 {self.mode} started on {self.host}:{self.port}")
-            if self.mode == const.MODE_CLIENT:
+            if not self.is_server:
                 logger.info(
                     f"Forwarding to SOCKS5 server at {self.server_host}:{self.server_port}"
                 )
@@ -143,6 +144,11 @@ class SOCKS5Base:
         remote_socket = None
 
         try:
+            # Client version handshake for server mode
+            if self.is_server and not self._perform_version_handshake(client_socket):
+                logger.error("Version handshake falied - incompatible client")
+                return
+
             # SOCKS5 initialization
             if not self._socks5_initialization(client_socket):
                 return
@@ -191,7 +197,7 @@ class SOCKS5Base:
                 return False
 
             # Check if client supports no authentication on server mode
-            if self.mode == const.MODE_SERVER and const.AUTH_NO_AUTH not in methods:
+            if self.is_server and const.AUTH_NO_AUTH not in methods:
                 logger.error("Client doesn't support no-auth method")
                 client_socket.sendall(
                     struct.pack(
@@ -209,6 +215,9 @@ class SOCKS5Base:
         except Exception as e:
             logger.error(f"SOCKS5 initialization error: {e}")
             return False
+
+    def _perform_version_handshake(self, socket_obj: socket.socket) -> bool:
+        raise NotImplementedError()
 
     def _socks5_request(self, client_socket: socket.socket) -> socket.socket:
         """

@@ -48,6 +48,11 @@ class SOCKS5Client:
             sock.settimeout(const.DEFAULT_SOCKET_TIMEOUT)
             sock.connect((self.server_host, self.server_port))
 
+            # Send client version handshake
+            if not self._perform_version_handshake(sock):
+                logger.error("Version handshake failed")
+                utils.close_socket(sock)
+                return None
             # SOCKS5 handshake
             if not self._perform_handshake(sock):
                 logger.error("SOCKS5 handshake failed")
@@ -77,6 +82,46 @@ class SOCKS5Client:
             if sock:
                 utils.close_socket(sock)
             return None
+
+    def _perform_version_handshake(self, socket_obj: socket.socket) -> bool:
+        """
+        Perform version handshake to ensure client and server are compatible.
+
+        Args:
+            socks_obj: Socket connected to the peer
+            is_server: True if running in server mode
+
+        Returns:
+            bool: True if versions are compatible
+        """
+        try:
+            # Client: Send version and receive response
+            socket_obj.sendall(
+                struct.pack(
+                    "!BBB",
+                    const.APP_VERSION_MAJOR,
+                    const.APP_VERSION_MINOR,
+                    const.APP_VERSION_PATCH,
+                )
+            )
+
+            # Get server response
+            response = utils.recv_all(socket_obj, 4)
+            if len(response) < 4:
+                logger.error("Version handshake failed - invalid response length")
+                return False
+
+            server_major, server_minor, server_patch, compatibility = struct.unpack(
+                "!BBBB", response
+            )
+            logger.info(f"Server version: {server_major}.{server_minor}.{server_patch}")
+            if compatibility != const.VERSION_COMPATIBLE:
+                logger.error("Server reported version incompatibility")
+                return False
+            return True
+        except Exception as e:
+            logger.error(f"Version handshake error: {e}")
+        return False
 
     def _perform_handshake(self, sock: socket.socket) -> bool:
         """
