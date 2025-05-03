@@ -6,11 +6,11 @@ import argparse
 import signal
 import sys
 import logging
-import threading
 from typing import Optional
 
 from .server import SOCKS5Server
 from .client import LocalClientProxy
+from .common import constants as const
 
 logger = logging.getLogger(__name__)
 
@@ -56,23 +56,35 @@ def main():
     subparsers = parser.add_subparsers(dest="mode", help="Proxy mode")
 
     # Server mode
-    server_parser = subparsers.add_parser("server", help="Run as a SOCKS5 server")
-    server_parser.add_argument(
-        "--host",
-        default="0.0.0.0",
-        help="Server host (default: 0.0.0.0)",
+    server_parser = subparsers.add_parser(
+        const.MODE_SERVER, help="Run as a SOCKS5 server"
     )
     server_parser.add_argument(
-        "--port", type=int, default=8080, help="Server port (default: 8080)"
+        "--host",
+        default=const.NONSPEC_HOST,
+        help=f"Server host (default: {const.NONSPEC_HOST})",
+    )
+    server_parser.add_argument(
+        "--port",
+        type=int,
+        default=const.DEFAULT_SERVER_PORT,
+        help=f"Server port (default: {const.DEFAULT_SERVER_PORT})",
     )
 
     # Client mode
-    client_parser = subparsers.add_parser("client", help="Run as a local client proxy")
-    client_parser.add_argument(
-        "--local-host", default="127.0.0.1", help="Local bind host (default: 127.0.0.1)"
+    client_parser = subparsers.add_parser(
+        const.MODE_CLIENT, help="Run as a local client proxy"
     )
     client_parser.add_argument(
-        "--local-port", type=int, default=1080, help="Local bind port (default: 1080)"
+        "--local-host",
+        default=const.LOCAL_HOST,
+        help=f"Local bind host (default: {const.LOCAL_HOST})",
+    )
+    client_parser.add_argument(
+        "--local-port",
+        type=int,
+        default=const.DEFAULT_LOCAL_PORT,
+        help=f"Local bind port (default: {const.DEFAULT_LOCAL_PORT})",
     )
     client_parser.add_argument(
         "--server-host",
@@ -82,8 +94,8 @@ def main():
     client_parser.add_argument(
         "--server-port",
         type=int,
-        default=8080,
-        help="SOCKS5 server port (default: 8080)",
+        default=const.DEFAULT_SERVER_PORT,
+        help=f"SOCKS5 server port (default: {const.DEFAULT_SERVER_PORT})",
     )
 
     # Parse arguments
@@ -94,9 +106,9 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
 
     # Run in the appropriate mode
-    if args.mode == "server":
+    if args.mode == const.MODE_SERVER:
         run_server(args.host, args.port)
-    elif args.mode == "client":
+    elif args.mode == const.MODE_CLIENT:
         run_client(args.local_host, args.local_port, args.server_host, args.server_port)
     else:
         parser.print_help()

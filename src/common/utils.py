@@ -191,7 +191,7 @@ def create_socks_reply_packet(reply_code, bind_addr: str = None, bind_port: int 
     try:
         if not bind_addr:
             # Default to 0.0.0.0:0 if no bind address is provided
-            bind_addr = "0.0.0.0"
+            bind_addr = const.NONSPEC_HOST
             bind_port = 0
 
         addr_type = get_address_type(bind_addr)
@@ -222,7 +222,7 @@ def create_socks_reply_packet(reply_code, bind_addr: str = None, bind_port: int 
                 0,
                 const.ATYP_IPV4,
             )
-            + socket.inet_aton("0.0.0.0")
+            + socket.inet_aton(const.NONSPEC_HOST)
             + struct.pack("!H", 0)
         )
 

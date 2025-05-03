@@ -5,6 +5,10 @@ Constants used throught the SOCKS5 proxy implementation.
 # SOCKS5 protocol constants
 SOCKS_VERSION = 5
 
+# SOCKS5 proxy mode
+MODE_SERVER = "server"
+MODE_CLIENT = "client"
+
 # SOCKS5 command types
 CMD_CONNECT = 1
 CMD_BIND = 2
@@ -44,3 +48,5 @@ DEFAULT_BUFFER_SIZE = 4096
 # Default ports
 DEFAULT_SERVER_PORT = 8080
 DEFAULT_LOCAL_PORT = 1080
+LOCAL_HOST = "127.0.0.1"
+NONSPEC_HOST = "0.0.0.0"

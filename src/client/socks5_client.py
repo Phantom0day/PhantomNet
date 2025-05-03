@@ -8,6 +8,7 @@ import logging
 from typing import Optional
 from ..common import constants as const
 from ..common import utils
+from src.base import SOCKS5Base
 
 logger = logging.getLogger(__name__)
 
@@ -128,44 +129,15 @@ class SOCKS5Client:
             bool: True if connection request successful, False otherwise
         """
         try:
-            # Determine address type and format
-            addr_type = utils.get_address_type(dest_host)
-
-            # Create request packet
-            if addr_type == const.ATYP_IPV4:
-                # IPv4 address
-                addr_bytes = socket.inet_aton(dest_host)
-                req = (
-                    struct.pack(
-                        "!BBBB", const.SOCKS_VERSION, const.CMD_CONNECT, 0, addr_type
-                    )
-                    + addr_bytes
-                )
-            elif addr_type == const.ATYP_DOMAIN:
-                # Domain name
-                addr_bytes = dest_host.encode()
-                req = (
-                    struct.pack(
-                        "!BBBB", const.SOCKS_VERSION, const.CMD_CONNECT, 0, addr_type
-                    )
-                    + struct.pack("!B", len(addr_bytes))
-                    + addr_bytes
-                )
-            elif addr_type == const.ATYP_IPV6:
-                # IPv6 address
-                addr_bytes = socket.inet_pton(socket.AF_INET6, dest_host)
-                req = (
-                    struct.pack(
-                        "!BBBB", const.SOCKS_VERSION, const.CMD_CONNECT, 0, addr_type
-                    )
-                    + addr_bytes
-                )
-            else:
-                logger.error(f"Unsupported address type: {addr_type}")
+            address_packet = utils.create_socks_address_packet(dest_host, dest_port)
+            if not address_packet:
                 return False
 
-            # Add port and send
-            req += struct.pack("!H", dest_port)
+            req = (
+                struct.pack("!BBB", const.SOCKS_VERSION, const.CMD_CONNECT, 0)
+                + address_packet
+            )
+
             sock.sendall(req)
 
             # Get response
