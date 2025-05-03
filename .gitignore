@@ -3,6 +3,7 @@
 *.pyc
 *.pyo
 *.pyd
+**/*.egg-info
 
 # virtual enviroment
 .venv/
