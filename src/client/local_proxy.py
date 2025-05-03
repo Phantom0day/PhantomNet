@@ -13,6 +13,7 @@ from ..common import constants as const
 from ..common import utils
 from .socks5_client import SOCKS5Client
 from src.base import SOCKS5Base
+from src.auth import NoAuthHandler, UsernamePasswordAuthHandler
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ class LocalClientProxy(SOCKS5Base):
         local_port=const.DEFAULT_LOCAL_PORT,
         server_host=None,
         server_port=const.DEFAULT_SERVER_PORT,
+        auth_handlers=None,
     ):
         """
         Initialize the local client proxy.
@@ -38,8 +40,14 @@ class LocalClientProxy(SOCKS5Base):
             local_port: Local port to bind to
             server_host: SOCKS5 server host
             server_port: SOCKS5 server port
+            auth_handlers: List of authentication handlers
         """
-        super().__init__(local_host, local_port, const.MODE_CLIENT)
+        super().__init__(
+            local_host,
+            local_port,
+            const.MODE_CLIENT,
+            auth_handlers or [NoAuthHandler()],
+        )
         self.server_host = server_host
         self.server_port = server_port
 

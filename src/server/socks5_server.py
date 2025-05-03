@@ -12,6 +12,7 @@ from typing import List, Optional
 from ..common import constants as const
 from ..common import utils
 from src.base import SOCKS5Base
+from src.auth import NoAuthHandler
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +23,26 @@ class SOCKS5Server(SOCKS5Base):
     traffic to the requested destinations.
     """
 
-    def __init__(self, host=const.NONSPEC_HOST, port=const.DEFAULT_SERVER_PORT):
-        super().__init__(host, port, const.MODE_SERVER)
+    def __init__(
+        self,
+        host=const.NONSPEC_HOST,
+        port=const.DEFAULT_SERVER_PORT,
+        auth_handlers=None,
+    ):
+        """
+        Initialize the SOCKS5 server.
+
+        Args:
+            host: Host address to bind to
+            port: Port number to bind to
+            auth_handlers: List of authentication handlers
+        """
+        super().__init__(
+            host,
+            port,
+            const.MODE_SERVER,
+            auth_handlers or [NoAuthHandler()],
+        )
 
     def _perform_version_handshake(self, socket_obj: socket.socket) -> bool:
         """

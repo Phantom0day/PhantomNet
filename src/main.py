@@ -11,6 +11,7 @@ from typing import Optional
 from .server import SOCKS5Server
 from .client import LocalClientProxy
 from .common import constants as const
+from src.auth import NoAuthHandler, UsernamePasswordAuthHandler
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,18 @@ def main():
         default=const.DEFAULT_SERVER_PORT,
         help=f"Server port (default: {const.DEFAULT_SERVER_PORT})",
     )
+    # Add support for authentication config
+    server_parser.add_argument(
+        "--auth",
+        choices=["none", "userpass"],
+        default="none",
+        help="Authentication method (default: none)",
+    )
+
+    server_parser.add_argument(
+        "--auth-file",
+        help="Authentication file for username/password (one user:pass per line)",
+    )
 
     # Client mode
     client_parser = subparsers.add_parser(
@@ -107,24 +120,47 @@ def main():
 
     # Run in the appropriate mode
     if args.mode == const.MODE_SERVER:
-        run_server(args.host, args.port)
+        run_server(args.host, args.port, args.auth, args.auth_file)
     elif args.mode == const.MODE_CLIENT:
         run_client(args.local_host, args.local_port, args.server_host, args.server_port)
     else:
         parser.print_help()
 
 
-def run_server(host, port):
+def run_server(host, port, auth="none", auth_file=None):
     """
     Run in server mode.
 
     Args:
         host: Server host
         port: Server port
+        auth: Authentication method
+        auth_file: Authentication file path
     """
     global server_proxy
 
     try:
+        auth_handlers = []
+
+        if auth == "none":
+            auth_handlers.append(NoAuthHandler())
+        elif auth == "userpass":
+            credentials = {}
+
+            if auth_file:
+                try:
+                    with open(auth_file, "r") as f:
+                        for line in f:
+                            line = line.strip()
+                            if line and not line.startswith("#"):
+                                username, password = line.split(":", 1)
+                                credentials[username.strip()] = password.strip()
+                except Exception as e:
+                    logger.error(f"Error loading auth file: {e}")
+                    sys.exit(1)
+
+            auth_handlers.append(UsernamePasswordAuthHandler(credentials))
+
         server_proxy = SOCKS5Server(host, port)
         server_proxy.start()
     except Exception as e:

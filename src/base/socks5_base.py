@@ -7,6 +7,7 @@ from typing import List
 
 from src.common import utils
 from src.common import constants as const
+from src.auth import NoAuthHandler, UsernamePasswordAuthHandler
 
 
 logger = logging.getLogger(__name__)
@@ -15,17 +16,23 @@ logger = logging.getLogger(__name__)
 class SOCKS5Base:
     """Base class for SOCKS5 client & server implementations."""
 
-    def __init__(self, host, port, mode):
+    def __init__(self, host, port, mode, auth_handlers=None):
         """
         Initialize the SOCKS5 proxy.
 
         Args:
             host: Host address to bind to
             port: Port number to bind to
+            mode: Proxy mode (server/client)
+            auth_handlers: List of authentication handlers
         """
         self.host = host
         self.port = port
         self.mode: str = mode
+        self.auth_handlers = auth_handlers or [NoAuthHandler()]
+        self.auth_methods = {
+            handler.get_method(): handler for handler in self.auth_handlers
+        }
         self.is_server = mode == const.MODE_SERVER
         self.running = False
         self.shutting_down = False
@@ -196,20 +203,27 @@ class SOCKS5Base:
                 logger.error("SOCKS5 initialization failed - invalid methods length")
                 return False
 
-            # Check if client supports no authentication on server mode
-            if self.is_server and const.AUTH_NO_AUTH not in methods:
-                logger.error("Client doesn't support no-auth method")
-                client_socket.sendall(
-                    struct.pack(
-                        "!BB", const.SOCKS_VERSION, const.AUTH_NO_ACCEPTABLE_METHODS
-                    )
-                )
+            supported_method = const.AUTH_NO_ACCEPTABLE_METHODS
+            for method in methods:
+                if method in self.auth_methods:
+                    supported_method = method
+                    break
+
+            # Send selected authentication method
+            client_socket.sendall(
+                struct.pack("!BB", const.SOCKS_VERSION, supported_method)
+            )
+
+            if supported_method == const.AUTH_NO_ACCEPTABLE_METHODS:
+                logger.error("No acceptable authentication methods")
                 return False
 
-            # We'll accept method 0 (no authentication required)
-            client_socket.sendall(
-                struct.pack("!BB", const.SOCKS_VERSION, const.AUTH_NO_AUTH)
-            )
+            # Perform authentication if needed
+            if supported_method != const.AUTH_NO_AUTH:
+                auth_handler = self.auth_methods[supported_method]
+                if not auth_handler.authenticate(client_socket):
+                    logger.error("Authentication failed")
+                    return False
             return True
 
         except Exception as e:
