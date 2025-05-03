@@ -243,12 +243,6 @@ class SOCKS5Base:
                     utils.create_socks_reply_packet(const.REPLY_GENERAL_FAILURE)
                 )
                 return None
-            if cmd != const.CMD_CONNECT:
-                logger.error(f"Unsupported SOCKS command: {cmd}")
-                client_socket.sendall(
-                    utils.create_socks_reply_packet(const.REPLY_COMMAND_NOT_SUPPORTED)
-                )
-                return None
 
             # Parse destination address
             dest_addr = utils.parse_address(client_socket, address_type)
@@ -275,8 +269,37 @@ class SOCKS5Base:
                 f"Local client proxy request to connect to {dest_addr}:{dest_port}"
             )
 
-            # Connect to destination via SOCKS5 server
-            return self._connect_to_destination(client_socket, dest_addr, dest_port)
+            if cmd == const.CMD_CONNECT:
+                # Handle CONNECT command (existing code)
+                return self._connect_to_destination(client_socket, dest_addr, dest_port)
+            elif cmd == const.CMD_UDP_ASSOCIATE:
+                # Handle UDP ASSOCIATE command
+                success, udp_socket = self._handle_udp_associate(
+                    client_socket, dest_addr, dest_port
+                )
+                if success:
+                    # Wait for the control connection to close
+                    while self.running:
+                        try:
+                            data = client_socket.recv(1)
+                            if not data:
+                                break
+                        except:
+                            break
+
+                    # Close UDP socket
+                    if udp_socket:
+                        utils.close_socket(udp_socket)
+
+                        return None
+                else:
+                    return None
+            else:
+                logger.error(f"Unsupported SOCKS command: {cmd}")
+                client_socket.sendall(
+                    utils.create_socks_reply_packet(const.REPLY_COMMAND_NOT_SUPPORTED)
+                )
+                return None
 
         except Exception as e:
             logger.error(f"SOCKS5 request error: {e}")
@@ -287,6 +310,167 @@ class SOCKS5Base:
             except:
                 pass
             return None
+
+    def _handle_udp_associate(self, client_socket: socket.socket, dest_addr, dest_port):
+        """
+        Handle UDP ASSOCIATE command.
+
+        Args:
+            client_socket: Client control socket
+            dest_addr: Destination address (client's address usually)
+            dest_port: Destination port (client's port usually)
+
+        Returns:
+            tuple: (bool success, UDP socket if created)
+        """
+        try:
+            # Create UDP socket
+            udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            udp_socket.bind((self.host, 0))  # Bind to any available port
+
+            # Get the bound address/port
+            bind_addr, bind_port = utils.extract_address_port(udp_socket)
+
+            # Send success response with the UDP server address/port
+            client_socket.sendall(
+                utils.create_socks_reply_packet(
+                    const.REPLY_SUCCESS, bind_addr, bind_port
+                )
+            )
+
+            # Start UDP relay thread
+            udp_thread = threading.Thread(
+                target=self._handle_udp_relay,
+                args=(udp_socket, dest_addr, dest_port, client_socket),
+            )
+            udp_thread.daemon = True
+            udp_thread.start()
+            self.threads.append(udp_thread)
+
+            return True, udp_socket
+        except Exception as e:
+            logger.error(f"UDP ASSOCIATE error: {e}")
+            client_socket.sendall(
+                utils.create_socks_reply_packet(const.REPLY_GENERAL_FAILURE)
+            )
+            return False, None
+
+    def _handle_udp_relay(
+        self,
+        udp_socket: socket.socket,
+        client_addr,
+        client_port,
+        control_socket: socket.socket,
+    ):
+        """
+        Handle UDP relay between client and destinations.
+
+        Args:
+            udp_socket: UDP socket for relaying data
+            client_addr: Client address
+            client_port: Client port
+            control_socket: TCP control connection
+        """
+        client_socket_fd = control_socket.fileno()
+        remote_sockets = {}  # {(dest_addr, dest_port): socket}
+
+        while self.running:
+            try:
+                # Check if control connection is still alive
+                readable, _, _ = select.select([control_socket], [], [], 0.1)
+                if control_socket in readable:
+                    data = control_socket.recv(1)
+                    if not data:  # Control connection closed
+                        break
+
+                # Check for UDP data
+                readable, _, _ = select.select([udp_socket], [], [], 0.1)
+                if not readable:
+                    continue
+
+                # Receive UDP data
+                data, addr = udp_socket.recvfrom(const.UDP_DEFAULT_BUFFER_SIZE)
+
+                if not data:
+                    continue
+
+                # Parse SOCKS5 UDP header
+                if len(data) < 10:  # Minimum header size
+                    continue
+
+                frag, atyp = struct.unpack("!BB", data[:2])
+                if frag != const.UDP_FRAG_NO:  # We don't support fragmentation
+                    continue
+
+                # Parse destination address and port from header
+                header_size = 0
+                dest_addr = None
+
+                if atyp == const.ATYP_IPV4:
+                    header_size = 10
+                    dest_addr = socket.inet_ntoa(data[4:8])
+                    dest_port = struct.unpack("!H", data[8:10])[0]
+                elif atyp == const.ATYP_DOMAIN:
+                    domain_len = data[2]
+                    header_size = 7 + domain_len
+                    dest_addr = data[3 : 3 + domain_len].decode()
+                    dest_port = struct.unpack(
+                        "!H", data[3 + domain_len : 5 + domain_len]
+                    )[0]
+                elif atyp == const.ATYP_IPV6:
+                    header_size = 22
+                    dest_addr = socket.inet_ntop(socket.AF_INET6, data[4:20])
+                    dest_port = struct.unpack("!H", data[20:22])[0]
+                else:
+                    continue
+
+                # Get payload
+                payload = data[header_size:]
+
+                # Get or create remote socket
+                key = (dest_addr, dest_port)
+                if key not in remote_sockets:
+                    remote_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    remote_sockets[key] = remote_socket
+                else:
+                    remote_socket = remote_sockets[key]
+
+                # Send payload to destination
+                remote_socket.sendto(payload, key)
+
+                # Check for response from destination
+                readable, _, _ = select.select([remote_socket], [], [], 0.1)
+                if remote_socket in readable:
+                    response, remote_addr = remote_socket.recvfrom(
+                        const.UDP_DEFAULT_BUFFER_SIZE
+                    )
+
+                    # Create SOCKS5 UDP header for response
+                    if socket.inet_aton(remote_addr[0]):  # IPv4
+                        header = struct.pack(
+                            "!BBB", const.UDP_FRAG_NO, const.ATYP_IPV4, 0
+                        )
+                        header += socket.inet_aton(remote_addr[0])
+                        header += struct.pack("!H", remote_addr[1])
+                    else:  # Domain
+                        domain = remote_addr[0].encode()
+                        header = struct.pack(
+                            "!BBB", const.UDP_FRAG_NO, const.ATYP_DOMAIN, len(domain)
+                        )
+                        header += domain
+                        header += struct.pack("!H", remote_addr[1])
+
+                    # Send response to client
+                    udp_socket.sendto(header + response, (client_addr, client_port))
+
+            except Exception as e:
+                logger.error(f"UDP relay error: {e}")
+                break
+
+        # Clean up UDP sockets
+        utils.close_socket(udp_socket)
+        for sock in remote_sockets.values():
+            utils.close_socket(sock)
 
     def _connect_to_destination(
         self, client_socket: socket.socket, dest_addr: str, dest_port: int

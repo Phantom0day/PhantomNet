@@ -54,12 +54,16 @@ NONSPEC_HOST = "0.0.0.0"
 # Application version constants
 APP_VERSION_MAJOR = 0
 APP_VERSION_MINOR = 1
-APP_VERSION_PATCH = 0
+APP_VERSION_PATCH = 1
 APP_VERSION = f"{APP_VERSION_MAJOR}.{APP_VERSION_MAJOR}.{APP_VERSION_PATCH}"
 
 # Version compatibility codes
 VERSION_COMPATIBLE = 0
 VERSION_INCOMPATIBLE = 1
+
+# UDP related constants
+UDP_FRAG_NO = 0  # No fragmentation
+UDP_DEFAULT_BUFFER_SIZE = 65507  # Max UDP packet size
 
 # Authentication methods details
 AUTH_USERNAME_PASSWORD_VERSION = 1
