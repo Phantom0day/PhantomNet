@@ -412,7 +412,9 @@ class SOCKS5Base:
                     dest_port = struct.unpack("!H", data[8:10])[0]
                 elif atyp == const.ATYP_DOMAIN:
                     domain_len = data[2]
-                    header_size = 7 + domain_len
+                    header_size = (
+                        4 + domain_len
+                    )  # 1(frag) + 1(atyp) + 1(len) + domain + 2(port)
                     dest_addr = data[3 : 3 + domain_len].decode()
                     dest_port = struct.unpack(
                         "!H", data[3 + domain_len : 5 + domain_len]
