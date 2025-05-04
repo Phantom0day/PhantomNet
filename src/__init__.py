@@ -2,4 +2,6 @@
 PhantomSocket - A modular SOCKS5 proxy implementation.
 """
 
-__version__ = "0.1.0"
+from src.common.constants import APP_VERSION
+
+__version__ = APP_VERSION

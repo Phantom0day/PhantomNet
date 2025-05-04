@@ -2,6 +2,12 @@
 Constants used throught the SOCKS5 proxy implementation.
 """
 
+# Application version constants
+APP_VERSION_MAJOR = 0
+APP_VERSION_MINOR = 2
+APP_VERSION_PATCH = 0
+APP_VERSION = f"{APP_VERSION_MAJOR}.{APP_VERSION_MINOR}.{APP_VERSION_PATCH}"
+
 # SOCKS5 protocol constants
 SOCKS_VERSION = 5
 
@@ -53,12 +59,6 @@ DEFAULT_SERVER_PORT = 8080
 DEFAULT_LOCAL_PORT = 1080
 LOCAL_HOST = "127.0.0.1"
 NONSPEC_HOST = "0.0.0.0"
-
-# Application version constants
-APP_VERSION_MAJOR = 0
-APP_VERSION_MINOR = 1
-APP_VERSION_PATCH = 1
-APP_VERSION = f"{APP_VERSION_MAJOR}.{APP_VERSION_MINOR}.{APP_VERSION_PATCH}"
 
 # Version compatibility codes
 VERSION_COMPATIBLE = 0
