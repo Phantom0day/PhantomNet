@@ -69,6 +69,9 @@ class ConnectionPool:
                 if now - timestamp < self.dns_cache_ttl:
                     return ip
 
+        if len(hostname) > 253:
+            raise ValueError("Invalid domain length")
+
         # Try to resolve with default DNS (system default)
         ip = self._try_resolve_with_dns(hostname)
         if ip:
