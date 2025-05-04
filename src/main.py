@@ -183,24 +183,26 @@ def main():
         config.set("mode", None, args.mode)
 
     # Server mode arguments
-    if hasattr(args, "host") and args.host:
-        config.set("server", "host", args.host)
-    if hasattr(args, "port") and args.port:
-        config.set("server", "port", args.port)
-    if hasattr(args, "auth") and args.auth:
-        config.set("server", "auth", args.auth)
-    if hasattr(args, "auth_file") and args.auth_file:
-        config.set("server", "auth_file", args.auth_file)
+    if hasattr(args, const.KEY_HOST) and args.host:
+        config.set(const.KEY_SERVER, const.KEY_HOST, args.host)
+    if hasattr(args, const.KEY_PORT) and args.port:
+        config.set(const.KEY_SERVER, const.KEY_PORT, args.port)
+    if hasattr(args, const.KEY_AUTH) and args.auth:
+        config.set(const.KEY_SERVER, const.KEY_AUTH, args.auth)
+    if hasattr(args, const.KEY_AUTH_FILE) and args.auth_file:
+        config.set(const.KEY_SERVER, const.KEY_AUTH_FILE, args.auth_file)
 
     # Client mode arguments
-    if hasattr(args, "local_host") and args.local_host:
-        config.set("client", "local_host", args.local_host)
-    if hasattr(args, "local_port") and args.local_port:
-        config.set("client", "local_port", args.local_port)
-    if hasattr(args, "server_host") and args.server_host:
-        config.set("client", "server_host", args.server_host)
-    if hasattr(args, "server_port") and args.server_port:
-        config.set("client", "server_port", args.server_port)
+    if hasattr(args, const.KEY_LOCAL_HOST) and args.local_host:
+        config.set(const.KEY_CLIENT, const.KEY_LOCAL_HOST, args.local_host)
+    if hasattr(args, const.KEY_LOCAL_PORT) and args.local_port:
+        config.set(const.KEY_CLIENT, const.KEY_LOCAL_PORT, args.local_port)
+    if hasattr(args, const.KEY_SERVER_HOST) and args.server_host:
+        config.set(const.KEY_CLIENT, const.KEY_SERVER_HOST, args.server_host)
+    if hasattr(args, const.KEY_SERVER_PORT) and args.server_port:
+        config.set(const.KEY_CLIENT, const.KEY_SERVER_PORT, args.server_port)
+
+    config.validate()
 
     # Setup logging
     setup_logging()
@@ -261,10 +263,22 @@ def run_client():
     global local_proxy
 
     try:
-        local_host = config.get("client", "local_host", const.LOCAL_HOST)
-        local_port = config.get("client", "local_port", const.DEFAULT_LOCAL_PORT)
-        server_host = config.get("client", "server_host")
-        server_port = config.get("client", "server_port", const.DEFAULT_SERVER_PORT)
+        local_host = config.get(
+            const.KEY_CLIENT,
+            const.KEY_LOCAL_HOST,
+            const.LOCAL_HOST,
+        )
+        local_port = config.get(
+            const.KEY_CLIENT,
+            const.KEY_LOCAL_PORT,
+            const.DEFAULT_LOCAL_PORT,
+        )
+        server_host = config.get(const.KEY_CLIENT, const.KEY_SERVER_HOST)
+        server_port = config.get(
+            const.KEY_CLIENT,
+            const.KEY_SERVER_PORT,
+            const.DEFAULT_SERVER_PORT,
+        )
 
         if not server_host:
             logger.error("SOCKS5 server host must be specified")

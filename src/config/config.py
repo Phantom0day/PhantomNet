@@ -22,35 +22,31 @@ class Config:
         """
         self.config_file = config_file
         self.config = {
-            "mode": None,
-            "server": {
-                "host": const.NONSPEC_HOST,
-                "port": const.DEFAULT_SERVER_PORT,
-                "auth": "none",
-                "auth_file": None,
+            const.KEY_MODE: None,
+            const.KEY_SERVER: {
+                const.KEY_HOST: const.NONSPEC_HOST,
+                const.KEY_PORT: const.DEFAULT_SERVER_PORT,
+                const.KEY_AUTH: "none",
+                const.KEY_AUTH_FILE: None,
             },
-            "client": {
-                "local_host": const.LOCAL_HOST,
-                "local_port": const.DEFAULT_LOCAL_PORT,
-                "server_host": None,
-                "server_port": const.DEFAULT_SERVER_PORT,
+            const.KEY_CLIENT: {
+                const.KEY_LOCAL_HOST: const.LOCAL_HOST,
+                const.KEY_LOCAL_PORT: const.DEFAULT_LOCAL_PORT,
+                const.KEY_SERVER_HOST: None,
+                const.KEY_SERVER_PORT: const.DEFAULT_SERVER_PORT,
             },
-            "logging": {
+            const.KEY_LOG: {
                 "level": "INFO",
                 "format": const.DEFUALT_LOGGING_FORMAT,
                 "file": None,
             },
-            "connection_pool": {
-                "max_size": 100,
-                "dns_cache_ttl": 300,
-                "dns_servers": [
-                    "8.8.8.8",  # Google DNS
-                    "1.1.1.1",  # Cloudflare DNS
-                    "9.9.9.9",  # Quad9 DNS
-                ],
-                "disable_dns_cache": False,
-                "dns_timeout": 2.0,
-                "dns_retries": 3,
+            const.KEY_POOL: {
+                const.KEY_MAX_SIZE: 100,
+                const.KEY_DNS_CACHE_TTL: 300,
+                const.KEY_DNS_SERVERS: const.DEFAULT_DNS_SERVERS,
+                const.KEY_DISABLE_DNS_CACHE: False,
+                const.KEY_DNS_TIMEOUT: 2.0,
+                const.KEY_DNS_RETRIES: 3,
             },
         }
         if config_file:
@@ -143,22 +139,39 @@ class Config:
             self.config["mode"] = new_config["mode"]
 
         # Update server config
-        self._update_config_key("server", new_config)
+        self._update_config_key(const.KEY_SERVER, new_config)
 
         # Update client config
-        self._update_config_key("client", new_config)
+        self._update_config_key(const.KEY_CLIENT, new_config)
 
         # Update logging config
-        self._update_config_key("logging", new_config)
+        self._update_config_key(const.KEY_LOG, new_config)
 
         # Update connection pool config
-        self._update_config_key("connection_pool", new_config)
+        self._update_config_key(const.KEY_POOL, new_config)
 
     def _update_config_key(self, key, new_config):
         if key in new_config:
             for subkey, value in new_config[key].items():
                 if subkey in self.config[key]:
                     self.config[key][subkey] = value
+
+    def validate(self):
+        """Validate config values"""
+        # validate server port
+        server_port = self.get(const.KEY_SERVER, const.KEY_PORT)
+        if not isinstance(server_port, int) or server_port < 1 or server_port > 65535:
+            raise ValueError(f"Invalid server port: {server_port}")
+
+        # validate connection pool maximum size
+        max_size = self.get(const.KEY_POOL, const.KEY_MAX_SIZE)
+        if not isinstance(max_size, int) or max_size < 1:
+            raise ValueError(f"Invalid connection pool max_size: {max_size}")
+
+        # validate DNS cache TTL
+        dns_cache_ttl = self.get(const.KEY_POOL, const.KEY_DNS_CACHE_TTL)
+        if not isinstance(dns_cache_ttl, int) or dns_cache_ttl < 0:
+            raise ValueError(f"Invalid dns_cache_ttl: {dns_cache_ttl}")
 
     def get(self, section, key=None, default=None):
         """

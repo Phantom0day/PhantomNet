@@ -76,3 +76,36 @@ AUTH_USERNAME_PASSWORD_FAILURE = 1
 # Max lengths
 MAX_USERNAME_LENGTH = 255
 MAX_PASSWORD_LENGTH = 255
+
+# Config key & default values
+KEY_MODE = "mode"
+KEY_SERVER = MODE_SERVER
+KEY_PORT = "port"
+KEY_HOST = "host"
+KEY_AUTH = "auth"
+KEY_AUTH_FILE = "auth_file"
+
+KEY_CLIENT = MODE_CLIENT
+KEY_LOCAL_HOST = "local_host"
+KEY_LOCAL_PORT = "local_port"
+KEY_SERVER_HOST = "server_host"
+KEY_SERVER_PORT = "server_port"
+
+KEY_LOG = "logging"
+
+
+KEY_POOL = "connection_pool"
+
+KEY_MAX_SIZE = "max_size"
+KEY_DNS_CACHE_TTL = "dns_cache_ttl"
+KEY_DNS_SERVERS = "dns_servers"
+KEY_DISABLE_DNS_CACHE = "disable_dns_cache"
+KEY_DNS_TIMEOUT = "dns_timeout"
+KEY_DNS_RETRIES = "dns_retries"
+
+DEFAULT_DNS_SERVERS = [
+    "8.8.8.8",  # Google DNS
+    "1.1.1.1",  # Cloudflare DNS
+    "9.9.9.9",  # Quad9 DNS
+    "208.67.222.222",  # Open DNS
+]

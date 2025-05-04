@@ -4,6 +4,7 @@ import socket
 import struct
 import threading
 from typing import List
+from concurrent.futures import ThreadPoolExecutor
 
 from src.common import utils
 from src.common import constants as const
@@ -36,8 +37,8 @@ class SOCKS5Base:
         }
         self.is_server = mode == const.MODE_SERVER
         self.running = False
+        self.executor = ThreadPoolExecutor(max_workers=100)  # configurable
         self.shutting_down = False
-        self.threads: List[threading.Thread] = []
         self.server_socket: socket.socket = None
         self.connection_pool = ConnectionPool()
 
@@ -79,16 +80,7 @@ class SOCKS5Base:
                     )
 
                     # Start a new thread to handle the client
-                    client_thread = threading.Thread(
-                        target=self._handle_client, args=(client_socket,)
-                    )
-                    client_thread.daemon = True
-                    client_thread.start()
-                    self.threads.append(client_thread)
-
-                    # Clean up finished threads
-                    self._clean_finished_threads()
-
+                    self.executor.submit(self._handle_client, client_socket)
                 except socket.timeout:
                     # This is normal, just continue the loop
                     continue
@@ -120,28 +112,11 @@ class SOCKS5Base:
             utils.close_socket(self.server_socket)
             self.server_socket = None
 
-        # Wait for all threads to finish (with timeout)
-        self._join_all_threads()
+        self.executor.shutdown(wait=True)
 
         logger.info(f"{self.mode.capitalize()} stopped")
         self.shutting_down = False
         return True
-
-    def _clean_finished_threads(self):
-        """Remove finished threads from the threads list."""
-        self.threads = [t for t in self.threads if t.is_alive()]
-
-    def _join_all_threads(self):
-        """Join all client threads with a timeout."""
-        for t in self.threads:
-            try:
-                if t.is_alive():
-                    t.join(const.DEFAULT_THREAD_JOIN_TIMEOUT)
-            except Exception as e:
-                logger.error(f"Error joining thread: {e}")
-
-        # Clear the threads list
-        self.threads = []
 
     def _handle_client(self, client_socket: socket.socket):
         """
@@ -363,14 +338,14 @@ class SOCKS5Base:
                 )
             )
 
-            # Start UDP relay thread
-            udp_thread = threading.Thread(
-                target=self._handle_udp_relay,
-                args=(udp_socket, dest_addr, dest_port, client_socket),
+            # Submit UDP relay thread
+            self.executor.submit(
+                self._handle_udp_relay,
+                udp_socket,
+                dest_addr,
+                dest_port,
+                client_socket,
             )
-            udp_thread.daemon = True
-            udp_thread.start()
-            self.threads.append(udp_thread)
 
             return True, udp_socket
         except Exception as e:

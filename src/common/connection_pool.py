@@ -15,7 +15,11 @@ logger = logging.getLogger(__name__)
 class ConnectionPool:
     """Pool of reusable connections."""
 
-    def __init__(self, max_size=100, dns_cache_ttl=300):
+    def __init__(
+        self,
+        max_size=config.get(const.KEY_POOL, const.KEY_MAX_SIZE, 100),
+        dns_cache_ttl=config.get(const.KEY_POOL, const.KEY_DNS_CACHE_TTL, 300),
+    ):
         """
         Initialize the connection pool.
 
@@ -53,7 +57,7 @@ class ConnectionPool:
         except socket.error:
             pass
 
-        if config.get("connection_pool", "disable_dns_cache", False):
+        if config.get(const.KEY_POOL, const.KEY_DISABLE_DNS_CACHE, False):
             # Skip cache check
             return hostname
 
@@ -73,14 +77,9 @@ class ConnectionPool:
             return ip
         # If default DNS fails, try with alternative DNS servers
         alt_dns_servers = config.get(
-            "connection_pool",
-            "dns_servers",
-            [
-                "8.8.8.8",  # Google DNS
-                "1.1.1.1",  # Cloudflare DNS
-                "9.9.9.9",  # Quad9 DNS
-                "208.67.222.222",  # Open DNS
-            ],
+            const.KEY_POOL,
+            const.KEY_DNS_SERVERS,
+            const.DEFAULT_DNS_SERVERS,
         )
 
         for dns_server in alt_dns_servers:
@@ -110,7 +109,7 @@ class ConnectionPool:
             resolver.nameservers = [dns_server]
 
         # Retry logic
-        retries = config.get("connection_pool", "dns_retries", 3)
+        retries = config.get(const.KEY_POOL, const.KEY_DNS_RETRIES, 3)
         for attempt in range(retries):
             try:
                 if attempt > 0:
@@ -118,7 +117,8 @@ class ConnectionPool:
 
                 # Set a shorter timeout for retries
                 resolver.timeout = (
-                    config.get("connection_pool", "dns_timeout", 1.0) + attempt * 0.5
+                    config.get(const.KEY_POOL, const.KEY_DNS_TIMEOUT, 1.0)
+                    + attempt * 0.5
                 )  # Increase timeout with each retry
 
                 answers = resolver.query(hostname, "A")
