@@ -37,7 +37,7 @@ class Config:
             },
             const.KEY_LOG: {
                 "level": "INFO",
-                "format": const.DEFUALT_LOGGING_FORMAT,
+                "format": const.DEFAULT_LOGGING_FORMAT,
                 "file": None,
             },
             const.KEY_POOL: {

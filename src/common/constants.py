@@ -38,7 +38,7 @@ AUTH_USERNAME_PASSWORD = 2
 AUTH_NO_ACCEPTABLE_METHODS = 255
 
 # Default logging format
-DEFUALT_LOGGING_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
+DEFAULT_LOGGING_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
 
 # Default timeout values (in seconds)
 DEFAULT_SOCKET_TIMEOUT = 10

@@ -49,7 +49,7 @@ def signal_handler(sig, frame):
 def setup_logging():
     """Setup logging based on configuration."""
     log_level = config.get("logging", "level", "INFO")
-    log_format = config.get("logging", "format", const.DEFUALT_LOGGING_FORMAT)
+    log_format = config.get("logging", "format", const.DEFAULT_LOGGING_FORMAT)
     log_file = config.get("logging", "file")
 
     # Convert string log level to logging constant
