@@ -161,7 +161,7 @@ def run_server(host, port, auth="none", auth_file=None):
 
             auth_handlers.append(UsernamePasswordAuthHandler(credentials))
 
-        server_proxy = SOCKS5Server(host, port)
+        server_proxy = SOCKS5Server(host, port, auth_handlers)
         server_proxy.start()
     except Exception as e:
         logger.error(f"Server error: {e}")

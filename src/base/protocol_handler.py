@@ -3,7 +3,7 @@ import socket
 import struct
 
 from src.common import constants as const, utils
-
+from src.auth import NoAuthHandler
 
 logger = logging.getLogger(__name__)
 

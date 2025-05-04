@@ -10,25 +10,6 @@ A modular, robust SOCKS5 proxy implementation inspired by Shadowsocks.
 - Easy to extend with additional features
 - Clean separation of concerns for maintainability
 
-## Project Structure
-
-```
-phantomsocket/
-├── __init__.py               # Package definition
-├── common/                   # Shared components
-│   ├── __init__.py
-│   ├── constants.py          # Protocol constants
-│   └── utils.py              # Utility functions
-├── server/                   # Server implementation
-│   ├── __init__.py
-│   └── socks5_server.py      # SOCKS5 server
-├── client/                   # Client implementation
-│   ├── __init__.py
-│   ├── socks5_client.py      # SOCKS5 client
-│   └── local_proxy.py        # Local client proxy
-└── main.py                   # CLI entry point
-```
-
 ## Installation
 
 1. Clone the repository:
@@ -94,7 +75,6 @@ To use applications with the local proxy:
 
 - Add encryption between client and server
 - Implement user authentication
-- Add UDP support
 - Add traffic statistics and monitoring
 - Add configuration file support
 

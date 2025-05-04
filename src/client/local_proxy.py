@@ -100,3 +100,18 @@ class LocalClientProxy(SOCKS5Base):
             except:
                 pass
             return None
+    def _perform_version_handshake(self, socket_obj: socket.socket) -> bool:
+        """
+        Local client proxy doesn't need to perform version handshake on the
+        listening socket as it acts as a server for local clients.
+        For server mode version checking, this will be handled by the SOCKS5Client.
+        
+        Args:
+            socket_obj: Socket connected to the peer
+            
+        Returns:
+            bool: Always returns True
+        """
+        # Local client proxy doesn't need to verify version on the listening socket
+        # as local applications don't use the version handshake
+        return True

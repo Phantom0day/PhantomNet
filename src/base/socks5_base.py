@@ -8,6 +8,7 @@ from typing import List
 from src.common import utils
 from src.common import constants as const
 from src.auth import NoAuthHandler, UsernamePasswordAuthHandler
+from src.common import ConnectionPool
 
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,7 @@ class SOCKS5Base:
         self.shutting_down = False
         self.threads: List[threading.Thread] = []
         self.server_socket: socket.socket = None
+        self.connection_pool = ConnectionPool()
 
     def start(self):
         f"""
@@ -173,7 +175,16 @@ class SOCKS5Base:
         finally:
             utils.close_socket(client_socket)
             if remote_socket:
-                utils.close_socket(remote_socket)
+                peername = remote_socket.getpeername()
+                dest_addr = peername[0]
+                dest_port = peername[1]
+                if self.is_server and dest_addr and dest_port:
+                    # Return socket to pool if possible
+                    self.connection_pool.return_connection(
+                        dest_addr, dest_port, remote_socket
+                    )
+                else:
+                    utils.close_socket(remote_socket)
 
     def _socks5_initialization(self, client_socket: socket.socket) -> bool:
         """
@@ -460,13 +471,16 @@ class SOCKS5Base:
                     )
 
                     # Create SOCKS5 UDP header for response
-                    if socket.inet_aton(remote_addr[0]):  # IPv4
+                    try:
+                        # Try IPv4
+                        socket.inet_aton(remote_addr[0])
                         header = struct.pack(
                             "!BBB", const.UDP_FRAG_NO, const.ATYP_IPV4, 0
                         )
                         header += socket.inet_aton(remote_addr[0])
                         header += struct.pack("!H", remote_addr[1])
-                    else:  # Domain
+                    except socket.error:
+                        # Handle as domain
                         domain = remote_addr[0].encode()
                         header = struct.pack(
                             "!BBB", const.UDP_FRAG_NO, const.ATYP_DOMAIN, len(domain)

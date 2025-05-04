@@ -5,6 +5,7 @@ Utility functions used throughout the SOCKS5 proxy implementation.
 import socket
 import struct
 import logging
+import time
 from . import constants as const
 
 # Configure logging
@@ -239,3 +240,8 @@ def close_socket(socket_obj: socket.socket):
             socket_obj.close()
         except Exception as e:
             logger.error(f"Error closing socket: {e}")
+
+
+def get_current_time():
+    """Get current time in seconds."""
+    return time.time()
