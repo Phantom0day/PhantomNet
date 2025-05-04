@@ -1,5 +1,2 @@
-"""
-SOCKS5 server implementation
-"""
-
-from .socks5_server import SOCKS5Server
+from src.server.server import RemoteServer
+from src.server.factory import ProxyServerFactory

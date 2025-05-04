@@ -1,87 +1,150 @@
 # PhantomSocket
 
-A modular, robust SOCKS5 proxy implementation inspired by Shadowsocks.
+A modular SOCKS5 proxy implementation with interceptor chain architecture designed for network censorship circumvention.
 
-## Features
+## Overview
 
-- Full SOCKS5 protocol implementation
-- Modular design with separate server and client components
-- Robust error handling and logging
-- Easy to extend with additional features
-- Clean separation of concerns for maintainability
+PhantomSocket is a specialized framework designed to bypass network censorship using various obfuscation and camouflage techniques. It consists of two main components:
+
+1. **Local Client Proxy**: Runs on the user's machine and accepts SOCKS5 connections from local applications
+2. **Remote Server**: Receives connections from the local proxy and forwards them to the actual destinations
+
+The framework uses a responsibility chain pattern similar to OkHttp's interceptor design, allowing easy addition of middleware components to handle protocol obfuscation, encryption, and other transformations.
+
+## Architecture
+
+```
++-------------+      +----------------+      +------------------+
+| Local App   | ---> | Local Proxy    | ---> | Remote Server    | ---> Internet
+| (Browser)   | <--- | (SOCKS5 Server)| <--- | (Custom Protocol)| <---
++-------------+      +----------------+      +------------------+
+                       |         ^                |        ^
+                       v         |                v        |
+                    +-------------------------------+
+                    | Interceptor Chain (Transform) |
+                    +-------------------------------+
+```
+
+The interceptor chain allows modification of both requests and responses passing through either component:
+
+1. Each request passes through the interceptor chain before being sent
+2. Each response passes through the interceptor chain before being forwarded back
+3. Interceptors on the client and server sides should complement each other (e.g., if the client encrypts, the server should decrypt)
 
 ## Installation
 
-1. Clone the repository:
-
 ```bash
-git clone https://github.com/Phantom0day/PhantomSocket.git
-cd PhantomSocket
-```
+# Clone the repository
+git clone https://github.com/yourusername/phantomsocket.git
+cd phantomsocket
 
-2. Install (optional):
-
-```bash
+# Install the package
 pip install -e .
 ```
 
 ## Usage
 
-### Running the SOCKS5 Server
+### Running the Remote Server
 
 ```bash
-python -m phantomsocket.main server --host 0.0.0.0 --port 8080
+python run.py server --host 0.0.0.0 --port 8388
 ```
 
 ### Running the Local Client Proxy
 
 ```bash
-python -m phantomsocket.main client --server-host YOUR_SERVER_IP --server-port 8080
+python run.py local --local-port 1080 --server-host your-server-ip --server-port 8388
 ```
 
-### Command-line Options
+### Using the Proxy with Applications
 
-Server mode:
-- `--host`: Server bind address (default: 0.0.0.0)
-- `--port`: Server bind port (default: 8080)
+Configure your applications to use a SOCKS5 proxy with:
+- Host: 127.0.0.1
+- Port: 1080 (or whatever port you specified for --local-port)
+- No authentication
 
-Client mode:
-- `--local-host`: Local bind address (default: 127.0.0.1)
-- `--local-port`: Local bind port (default: 1080)
-- `--server-host`: Remote SOCKS5 server address
-- `--server-port`: Remote SOCKS5 server port (default: 8080)
+## Adding Custom Interceptors
 
-## Configuring Applications
+PhantomSocket's power lies in its extensibility. Create custom interceptors by subclassing `BaseInterceptor`:
 
-To use applications with the local proxy:
+```python
+from src.core import BaseInterceptor, ProtocolContext
 
-1. Configure your browser or application to use a SOCKS5 proxy:
-   - Host: 127.0.0.1 (or the value of `--local-host`)
-   - Port: 1080 (or the value of `--local-port`)
+class MyCustomInterceptor(BaseInterceptor):
+    def pre_process(self, context: ProtocolContext) -> ProtocolContext:
+        # Modify outgoing request
+        context.processed_request = transform(context.request_data)
+        return context
+        
+    def post_process(self, context: ProtocolContext) -> ProtocolContext:
+        # Modify incoming response
+        context.processed_response = transform(context.response_data)
+        return context
+```
 
-2. For Firefox:
-   - Go to Settings → General → Network Settings
-   - Choose "Manual proxy configuration"
-   - Enter the SOCKS host (127.0.0.1) and port (1080)
-   - Select SOCKS v5
+Then add your interceptor to the chain in your server and client:
 
-3. For Chrome/Edge:
-   - Go to Settings → Advanced → System → Proxy settings
-   - Enable manual proxy configuration
-   - Set SOCKS host and port
-   - Select SOCKS v5
+```python
+# For the client
+local_proxy = LocalClientProxy(
+    "127.0.0.1", 
+    1080, 
+    "your-server-ip", 
+    8388,
+    interceptors=[
+        MyEncryptionInterceptor(),
+        MyObfuscationInterceptor()
+    ]
+)
 
-## Future Enhancements
+# For the server
+server = RemoteServer(
+    "0.0.0.0", 
+    8388,
+    interceptors=[
+        MyDecryptionInterceptor(),
+        MyDeobfuscationInterceptor()
+    ]
+)
+```
 
-- Add encryption between client and server
-- Implement user authentication
-- Add traffic statistics and monitoring
-- Add configuration file support
+## Included Interceptor Categories
+
+PhantomSocket includes several interceptor categories that you can implement:
+
+### Security Interceptors
+- Encryption/decryption of traffic
+- Protocol obfuscation
+- Packet size normalization
+
+### Camouflage Interceptors
+- Traffic disguised as HTTP/HTTPS
+- Traffic disguised as TLS
+- Traffic disguised as video streaming
+
+### Analysis Evasion Interceptors
+- DPI (Deep Packet Inspection) evasion
+- Entropy adjustment
+- Timing randomization
+
+### Optimization Interceptors
+- Connection pooling
+- Performance optimizations
+
+## Security Considerations
+
+- The default implementation (without interceptors) provides **no security** - all traffic is sent in plaintext
+- Add appropriate interceptors for encryption and obfuscation based on your threat model
+- Always use strong encryption for sensitive traffic
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-MIT License
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Acknowledgments
+## Disclaimer
 
-This project was inspired by Shadowsocks and the SOCKS5 protocol (RFC 1928).
+This tool is designed for legitimate privacy protection and censorship circumvention. Users are responsible for complying with local laws and regulations.

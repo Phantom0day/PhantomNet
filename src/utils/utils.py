@@ -1,167 +1,19 @@
 """
-Utility functions used throughout the SOCKS5 proxy implementation.
+Utility functions for SOCKS5 protocol handling.
 """
 
 import socket
 import struct
 import logging
-import time
-from src.common import constants as const
+from typing import Optional, Tuple, BinaryIO
+from src.utils.constants import *
 
 logger = logging.getLogger(__name__)
 
 
-def extract_address_port(socket_obj):
-    """
-    Extract the address and port from a socket's getpeername() or getsockname().
-
-    Args:
-        socket_obj: A socket object
-
-    Returns:
-        tuple: (address, port)
-    """
-    try:
-        addr_info = socket_obj.getsockname()
-        return addr_info[0], addr_info[1]
-    except Exception as e:
-        logger.error(f"Error extracting address and port: {e}")
-        return None, None
-
-
-def parse_address(socket_obj, address_type):
-    """
-    Parse an address from a socket based on the SOCKS5 address type.
-
-    Args:
-        socket_obj: A socket object to receive data from
-        address_type: SOCKS5 address type (IPv4, Domain, IPv6)
-
-    Returns:
-        str: The parsed address
-    """
-    try:
-        if address_type == const.ATYP_IPV4:
-            addr_data = recv_all(socket_obj, 4)
-            if len(addr_data) < 4:
-                logger.error("Invalid IPv4 address length")
-                return None
-            return socket.inet_ntoa(addr_data)
-
-        elif address_type == const.ATYP_DOMAIN:
-            addr_len = socket_obj.recv(1)
-            if not addr_len:
-                logger.error("Failed to receive domain name length")
-                return None
-
-            addr_len = ord(addr_len)
-            addr_data = recv_all(socket_obj, addr_len)
-            if len(addr_data) < addr_len:
-                logger.error("Invalid domain name length")
-                return None
-            return addr_data.decode("utf-8")
-
-        elif address_type == const.ATYP_IPV6:
-            addr_data = recv_all(socket_obj, 16)
-            if len(addr_data) < 16:
-                logger.error("Invalid IPv6 address length")
-                return None
-            return socket.inet_ntop(socket.AF_INET6, addr_data)
-
-        else:
-            logger.error(f"Unsupported address type: {address_type}")
-            return None
-
-    except Exception as e:
-        logger.error(f"Error parsing address: {e}")
-        return None
-
-
-def get_address_type(addr: str):
-    """
-    Determine the SOCKS5 address type for a given address string.
-
-    Args:
-        addr: Address string
-
-    Returns:
-        int: SOCKS5 address type constant
-    """
-    try:
-        # check if it's an IPv4 address (x.x.x.x)
-        if addr.count(".") == 3 and all(
-            part.isdigit() and 0 <= int(part) <= 255 for part in addr.split(".")
-        ):
-            return const.ATYP_IPV4
-
-        # check if it's an IPv6 address (contains ':')
-        elif ":" in addr:
-            return const.ATYP_IPV6
-
-        # Otherwise, treat as domain name
-        else:
-            return const.ATYP_DOMAIN
-    except Exception:
-        # Default to domain name if we can't determine
-        return const.ATYP_DOMAIN
-
-
-def create_socks_address_packet(addr: str, port):
-    """
-    Create a SOCKS5 address packet for the given address and port.
-
-    Args:
-        addr: Address string
-        port: Port number
-
-    Returns:
-        bytes: SOCKS5 formatted address packet
-    """
-    try:
-        addr_type = get_address_type(addr)
-
-        if addr_type == const.ATYP_IPV4:
-            return (
-                struct.pack("!B", addr_type)
-                + socket.inet_aton(addr)
-                + struct.pack("!H", port)
-            )
-
-        elif addr_type == const.ATYP_DOMAIN:
-            addr_bytes = addr.encode()
-            return (
-                struct.pack("!B", addr_type)
-                + struct.pack("!B", len(addr_bytes))
-                + addr_bytes
-                + struct.pack("!H", port)
-            )
-
-        elif addr_type == const.ATYP_IPV6:
-            return (
-                struct.pack("!B", addr_type)
-                + socket.inet_pton(socket.AF_INET6, addr)
-                + struct.pack("!H", port)
-            )
-
-        else:
-            logger.error(f"Unsupported address type: {addr_type}")
-            return None
-
-    except Exception as e:
-        logger.error(f"Error creating SOCKS address packet: {e}")
-        return None
-
-
-def recv_all(socket_obj: socket.socket, n):
+def recv_all(socket_obj: socket.socket, n: int) -> bytes:
     """
     Receive exactly n bytes from a socket, or until EOF is hit.
-
-    Args:
-        socket_obj: Socket to receive from
-        n: Number of bytes to receive
-
-    Returns:
-        bytes: Received data
     """
     data = b""
     while len(data) < n:
@@ -172,71 +24,144 @@ def recv_all(socket_obj: socket.socket, n):
     return data
 
 
-def create_socks_reply_packet(reply_code, bind_addr: str = None, bind_port: int = 0):
+def get_address_type(addr: str) -> int:
     """
-    Create a SOCKS5 reply packet.
-
-    Args:
-        reply_code: SOCKS5 reply code
-        bind_addr: Bound address
-        bind_port: Bound port
-
-    Returns:
-        bytes: SOCKS5 reply packet
+    Determine the SOCKS5 address type for a given address string.
     """
     try:
-        if not bind_addr:
-            # Default to 0.0.0.0:0 if no bind address is provided
-            bind_addr = const.NONSPEC_HOST
-            bind_port = 0
+        # check if it's an IPv4 address (x.x.x.x)
+        if addr.count(".") == 3 and all(
+            part.isdigit() and 0 <= int(part) <= 255 for part in addr.split(".")
+        ):
+            return ATYP_IPV4
 
+        # check if it's an IPv6 address (contains ':')
+        elif ":" in addr:
+            return ATYP_IPV6
+
+        # Otherwise, treat as domain name
+        else:
+            return ATYP_DOMAIN
+    except Exception:
+        # Default to domain name if we can't determine
+        return ATYP_DOMAIN
+
+
+def parse_address(
+    data: BinaryIO, address_type: int
+) -> Tuple[Optional[str], Optional[int]]:
+    """
+    Parse an address from a BytesIO based on the SOCKS5 address type.
+    Returns (address, port) tuple
+    """
+    try:
+        if address_type == ATYP_IPV4:
+            # IPv4 address (4 bytes)
+            addr_data = data.read(4)
+            if len(addr_data) < 4:
+                logger.error("Invalid IPv4 address length")
+                return None, None
+            addr = socket.inet_ntoa(addr_data)
+        elif address_type == ATYP_DOMAIN:
+            # Domain name (variable length)
+            addr_len = data.read(1)
+            if not addr_len:
+                logger.error("Failed to receive domain name length")
+                return None, None
+            addr_len = ord(addr_len)
+            addr_data = data.read(addr_len)
+            if len(addr_data) < addr_len:
+                logger.error("Invalid domain name length")
+                return None, None
+            addr = addr_data.decode("utf-8")
+        elif address_type == ATYP_IPV6:
+            # IPv6 address (16 bytes)
+            addr_data = data.read(16)
+            if len(addr_data) < 16:
+                logger.error("Invalid IPv6 address length")
+                return None, None
+            addr = socket.inet_ntop(socket.AF_INET6, addr_data)
+        else:
+            logger.error(f"Unsupported address type: {address_type}")
+            return None, None
+
+        # Get port (2 bytes)
+        port_data = data.read(2)
+        if len(port_data) < 2:
+            logger.error("Invalid port data")
+            return addr, None
+        port = struct.unpack("!H", port_data)[0]
+
+        return addr, port
+    except Exception as e:
+        logger.error(f"Error parsing address: {e}")
+        return None, None
+
+
+def create_socks_reply(
+    reply_code: int, bind_addr: str = "0.0.0.0", bind_port: int = 0
+) -> bytes:
+    """
+    Create a SOCKS5 reply packet.
+    """
+    try:
         addr_type = get_address_type(bind_addr)
+        # Start with version, reply code, reserved, and address type
+        reply = struct.pack("!BBBB", SOCKS_VERSION, reply_code, 0, addr_type)
 
-        # Pack the reply
-        reply = struct.pack("!BBB", const.SOCKS_VERSION, reply_code, 0)
+        if addr_type == ATYP_IPV4:
+            # IPv4 address
+            reply += socket.inet_aton(bind_addr)
+        elif addr_type == ATYP_DOMAIN:
+            # Domain name
+            domain_bytes = bind_addr.encode()
+            reply += struct.pack("!B", len(domain_bytes)) + domain_bytes
+        elif addr_type == ATYP_IPV6:
+            # IPv6 address
+            reply += socket.inet_pton(socket.AF_INET6, bind_addr)
 
-        if addr_type == const.ATYP_IPV4:
-            reply += struct.pack("!B", const.ATYP_IPV4) + socket.inet_aton(bind_addr)
-        elif addr_type == const.ATYP_DOMAIN:
-            addr_bytes = bind_addr.encode()
-            reply += struct.pack("!BB", const.ATYP_DOMAIN, len(addr_bytes)) + addr_bytes
-        elif addr_type == const.ATYP_IPV6:
-            reply += struct.pack("!B", const.ATYP_IPV6) + socket.inet_pton(
-                socket.AF_INET6, bind_addr
-            )
-
-        reply += struct.pack("!H", bind_port)
+        reply += struct.pack("!H", bind_port)  # Port
         return reply
     except Exception as e:
-        logger.error(f"Error creating SOCKS reply packet: {e}")
+        logger.error(f"Error creating SOCKS reply: {e}")
         # Create a generic failure reply
         return (
-            struct.pack(
-                "!BBBB",
-                const.SOCKS_VERSION,
-                const.REPLY_GENERAL_FAILURE,
-                0,
-                const.ATYP_IPV4,
-            )
-            + socket.inet_aton(const.NONSPEC_HOST)
+            struct.pack("!BBBB", SOCKS_VERSION, REPLY_GENERAL_FAILURE, 0, ATYP_IPV4)
+            + socket.inet_aton("0.0.0.0")
             + struct.pack("!H", 0)
         )
 
 
-def close_socket(socket_obj: socket.socket):
+def create_socks5_connect_request(dest_addr: str, dest_port: int) -> bytes:
     """
-    Safely close a socket.
+    Create a SOCKS5 connect request.
+    """
+    try:
+        # Determine address type
+        addr_type = get_address_type(dest_addr)
+        if addr_type == ATYP_IPV4:  # IPv4
+            addr_bytes = socket.inet_aton(dest_addr)
+            addr_data = struct.pack("!B", addr_type) + addr_bytes
+        elif addr_type == ATYP_IPV6:  # IPv6
+            addr_bytes = socket.inet_pton(socket.AF_INET6, dest_addr)
+            addr_data = struct.pack("!B", addr_type) + addr_bytes
+        else:  # Domain name
+            addr_bytes = dest_addr.encode("utf-8")
+            addr_data = struct.pack("!BB", addr_type, len(addr_bytes)) + addr_bytes
 
-    Args:
-        socket_obj: Socket to close
-    """
-    if socket_obj:
+        # Create request
+        request = struct.pack("!BBB", SOCKS_VERSION, CMD_CONNECT, 0) + addr_data
+        request += struct.pack("!H", dest_port)
+        return request
+    except Exception as e:
+        logger.error(f"Error creating SOCKS5 connect request: {e}")
+        return b""
+
+
+def close_socket(sock: socket.socket) -> None:
+    """Safely close a socket."""
+    if sock:
         try:
-            socket_obj.close()
+            sock.close()
         except Exception as e:
             logger.error(f"Error closing socket: {e}")
-
-
-def get_current_time():
-    """Get current time in seconds."""
-    return time.time()
