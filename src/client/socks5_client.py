@@ -6,9 +6,8 @@ import socket
 import struct
 import logging
 from typing import Optional
-from ..common import constants as const
-from ..common import utils
-from src.base import SOCKS5Base
+from src.common import constants as const
+from src.utils import utils
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +209,9 @@ class SOCKS5Client:
                     const.REPLY_COMMAND_NOT_SUPPORTED: "Command not supported",
                     const.REPLY_ADDRESS_TYPE_NOT_SUPPORTED: "Address type not supported",
                 }
-                error_msg = error_messages.get(status, f"Unknown error (code: {status})")
+                error_msg = error_messages.get(
+                    status, f"Unknown error (code: {status})"
+                )
                 logger.error(f"SOCKS5 connection request failed: {error_msg}")
                 return False
 

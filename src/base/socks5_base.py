@@ -6,7 +6,7 @@ import threading
 from typing import List
 from concurrent.futures import ThreadPoolExecutor
 
-from src.common import utils
+from src.utils import utils
 from src.common import constants as const
 from src.auth import NoAuthHandler, UsernamePasswordAuthHandler
 from src.common import ConnectionPool

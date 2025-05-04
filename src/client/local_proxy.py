@@ -9,9 +9,9 @@ import threading
 import logging
 from typing import List
 
-from ..common import constants as const
-from ..common import utils
-from .socks5_client import SOCKS5Client
+from src.common import constants as const
+from src.utils import utils
+from src.client.socks5_client import SOCKS5Client
 from src.base import SOCKS5Base
 from src.auth import NoAuthHandler, UsernamePasswordAuthHandler
 
@@ -100,15 +100,16 @@ class LocalClientProxy(SOCKS5Base):
             except:
                 pass
             return None
+
     def _perform_version_handshake(self, socket_obj: socket.socket) -> bool:
         """
         Local client proxy doesn't need to perform version handshake on the
         listening socket as it acts as a server for local clients.
         For server mode version checking, this will be handled by the SOCKS5Client.
-        
+
         Args:
             socket_obj: Socket connected to the peer
-            
+
         Returns:
             bool: Always returns True
         """

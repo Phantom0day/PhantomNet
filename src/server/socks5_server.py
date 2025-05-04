@@ -9,8 +9,8 @@ import threading
 import logging
 from typing import List, Optional
 
-from ..common import constants as const
-from ..common import utils
+from src.common import constants as const
+from src.utils import utils
 from src.base import SOCKS5Base
 from src.auth import NoAuthHandler
 
@@ -106,7 +106,7 @@ class SOCKS5Server(SOCKS5Base):
         try:
             # Try to get a connection from the pool
             remote_socket = self.connection_pool.get_connection(dest_addr, dest_port)
-            
+
             if not remote_socket:
                 # Create socket
                 remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

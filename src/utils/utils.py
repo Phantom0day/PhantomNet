@@ -6,7 +6,7 @@ import socket
 import struct
 import logging
 import time
-from . import constants as const
+from src.common import constants as const
 
 logger = logging.getLogger(__name__)
 

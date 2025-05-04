@@ -8,7 +8,7 @@ import struct
 from typing import Dict, Optional, Tuple
 
 from src.common import constants as const
-from src.common import utils
+from src.utils import utils
 
 logger = logging.getLogger(__name__)
 

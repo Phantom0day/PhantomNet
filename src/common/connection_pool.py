@@ -5,8 +5,9 @@ import time
 import dns.resolver
 from typing import Dict, List, Tuple
 
-from src.common import constants as const, utils
+from src.common import constants as const
 from src.config import config
+from src.utils import utils
 
 
 logger = logging.getLogger(__name__)
@@ -120,7 +121,9 @@ class ConnectionPool:
 
                 # Set a shorter timeout for retries
                 resolver.timeout = (
-                    config.get(const.KEY_POOL, const.KEY_DNS_TIMEOUT, const.DEFAULT_DNS_TIMEOUT)
+                    config.get(
+                        const.KEY_POOL, const.KEY_DNS_TIMEOUT, const.DEFAULT_DNS_TIMEOUT
+                    )
                     + attempt * 0.5
                 )  # Increase timeout with each retry
 
