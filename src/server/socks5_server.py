@@ -104,10 +104,14 @@ class SOCKS5Server(SOCKS5Base):
         remote_socket = None
 
         try:
-            # Create socket
-            remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            remote_socket.settimeout(const.DEFAULT_SOCKET_TIMEOUT)
-            remote_socket.connect((dest_addr, dest_port))
+            # Try to get a connection from the pool
+            remote_socket = self.connection_pool.get_connection(dest_addr, dest_port)
+            
+            if not remote_socket:
+                # Create socket
+                remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                remote_socket.settimeout(const.DEFAULT_SOCKET_TIMEOUT)
+                remote_socket.connect((dest_addr, dest_port))
 
             # Get the bound address/port
             bind_addr, bind_port = utils.extract_address_port(remote_socket)

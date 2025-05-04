@@ -534,10 +534,25 @@ class SOCKS5Base:
                         data = s.recv(const.DEFAULT_BUFFER_SIZE)
                         if not data:
                             return
-                        if s is client_socket:
-                            remote_socket.sendall(data)
-                        else:
-                            client_socket.sendall(data)
+                        # Determine the destination socket
+                        dest_socket = (
+                            remote_socket if s is client_socket else client_socket
+                        )
+
+                        # Use try-except to handle EWOULDBLOCK (10035) errors
+                        try:
+                            dest_socket.sendall(data)
+                        except socket.error as e:
+                            err = e.args[0]
+                            # Handle would-block error
+                            if err == 10035:  # WSAEWOULDBLOCK
+                                # This is normal for non-blocking sockets
+                                # Just continue and try again on the next loop iteration
+                                continue
+                            else:
+                                # For other socket errors, raise the exception
+                                raise
+
                     except ConnectionError:
                         return
             except (select.error, socket.error) as e:
