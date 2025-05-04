@@ -12,6 +12,7 @@ from .server import SOCKS5Server
 from .client import LocalClientProxy
 from .common import constants as const
 from src.auth import NoAuthHandler, UsernamePasswordAuthHandler
+from .config import config
 
 logger = logging.getLogger(__name__)
 
@@ -45,12 +46,61 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
+def setup_logging():
+    """Setup logging based on configuration."""
+    log_level = config.get("logging", "level", "INFO")
+    log_format = config.get("logging", "format", const.DEFUALT_LOGGING_FORMAT)
+    log_file = config.get("logging", "file")
+
+    # Convert string log level to logging constant
+    numeric_level = getattr(logging, log_level.upper(), None)
+    if not isinstance(numeric_level, int):
+        numeric_level = logging.INFO
+
+    # Configure logging
+    logging.basicConfig(
+        level=numeric_level,
+        format=log_format,
+        filename=log_file,
+    )
+
+
+def generate_default_config(config_path):
+    """
+    Generate default configuration file.
+
+    Args:
+        config_path: Path to save configuration file
+    """
+    # Set some defaults
+    config.config["mode"] = const.MODE_SERVER
+
+    # Save the configuration
+    config.save_config(config_path)
+    logger.info(f"Default configuration saved to {config_path}")
+    print(f"Default configuration saved to {config_path}")
+
+
 def main():
     """
     Main entry point for the application.
     """
     parser = argparse.ArgumentParser(
         description="PhantomSocket - A modular SOCKS5 proxy implementation"
+    )
+
+    # Add config file option
+    parser.add_argument(
+        "-c",
+        "--config",
+        default="config.json",
+        help="Path to configuration file",
+    )
+
+    # Add option to generate default config
+    parser.add_argument(
+        "--generate-config",
+        help="Generate default configuration file and exit",
     )
 
     # Create subparsers for different modes
@@ -66,6 +116,7 @@ def main():
         help=f"Server host (default: {const.NONSPEC_HOST})",
     )
     server_parser.add_argument(
+        "-p",
         "--port",
         type=int,
         default=const.DEFAULT_SERVER_PORT,
@@ -73,6 +124,7 @@ def main():
     )
     # Add support for authentication config
     server_parser.add_argument(
+        "-a",
         "--auth",
         choices=["none", "userpass"],
         default="none",
@@ -89,22 +141,25 @@ def main():
         const.MODE_CLIENT, help="Run as a local client proxy"
     )
     client_parser.add_argument(
+        "-lh",
         "--local-host",
         default=const.LOCAL_HOST,
         help=f"Local bind host (default: {const.LOCAL_HOST})",
     )
     client_parser.add_argument(
+        "-lp",
         "--local-port",
         type=int,
         default=const.DEFAULT_LOCAL_PORT,
         help=f"Local bind port (default: {const.DEFAULT_LOCAL_PORT})",
     )
     client_parser.add_argument(
+        "-sh",
         "--server-host",
-        required=True,
         help="SOCKS5 server host",
     )
     client_parser.add_argument(
+        "-sp",
         "--server-port",
         type=int,
         default=const.DEFAULT_SERVER_PORT,
@@ -114,32 +169,65 @@ def main():
     # Parse arguments
     args = parser.parse_args()
 
+    # Generate default config if requested
+    if args.generate_config:
+        generate_default_config(args.generate_config)
+        return
+
+    # Load configuration file if specified
+    if args.config:
+        config.load_config(args.config)
+
+    # Override config with command line arguments
+    if args.mode:
+        config.set("mode", None, args.mode)
+
+    # Server mode arguments
+    if hasattr(args, "host") and args.host:
+        config.set("server", "host", args.host)
+    if hasattr(args, "port") and args.port:
+        config.set("server", "port", args.port)
+    if hasattr(args, "auth") and args.auth:
+        config.set("server", "auth", args.auth)
+    if hasattr(args, "auth_file") and args.auth_file:
+        config.set("server", "auth_file", args.auth_file)
+
+    # Client mode arguments
+    if hasattr(args, "local_host") and args.local_host:
+        config.set("client", "local_host", args.local_host)
+    if hasattr(args, "local_port") and args.local_port:
+        config.set("client", "local_port", args.local_port)
+    if hasattr(args, "server_host") and args.server_host:
+        config.set("client", "server_host", args.server_host)
+    if hasattr(args, "server_port") and args.server_port:
+        config.set("client", "server_port", args.server_port)
+
+    # Setup logging
+    setup_logging()
+
     # Register signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
     # Run in the appropriate mode
     if args.mode == const.MODE_SERVER:
-        run_server(args.host, args.port, args.auth, args.auth_file)
+        run_server()
     elif args.mode == const.MODE_CLIENT:
-        run_client(args.local_host, args.local_port, args.server_host, args.server_port)
+        run_client()
     else:
         parser.print_help()
 
 
-def run_server(host, port, auth="none", auth_file=None):
-    """
-    Run in server mode.
-
-    Args:
-        host: Server host
-        port: Server port
-        auth: Authentication method
-        auth_file: Authentication file path
-    """
+def run_server():
+    """Run in server mode."""
     global server_proxy
 
     try:
+        host = config.get("server", "host", const.NONSPEC_HOST)
+        port = config.get("server", "port", const.DEFAULT_SERVER_PORT)
+        auth = config.get("server", "auth", "none")
+        auth_file = config.get("server", "auth_file")
+
         auth_handlers = []
 
         if auth == "none":
@@ -168,19 +256,20 @@ def run_server(host, port, auth="none", auth_file=None):
         sys.exit(1)
 
 
-def run_client(local_host, local_port, server_host, server_port):
-    """
-    Run in client mode.
-
-    Args:
-        local_host: Local bind host
-        local_port: Local bind port
-        server_host: SOCKS5 server host
-        server_port: SOCKS5 server port
-    """
+def run_client():
+    """Run in client mode."""
     global local_proxy
 
     try:
+        local_host = config.get("client", "local_host", const.LOCAL_HOST)
+        local_port = config.get("client", "local_port", const.DEFAULT_LOCAL_PORT)
+        server_host = config.get("client", "server_host")
+        server_port = config.get("client", "server_port", const.DEFAULT_SERVER_PORT)
+
+        if not server_host:
+            logger.error("SOCKS5 server host must be specified")
+            sys.exit(1)
+
         local_proxy = LocalClientProxy(
             local_host,
             local_port,

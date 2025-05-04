@@ -31,3 +31,6 @@ data/
 *.db
 
 src.txt
+config.json
+config.yaml
+config.ini
