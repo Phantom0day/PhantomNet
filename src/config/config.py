@@ -43,6 +43,14 @@ class Config:
             "connection_pool": {
                 "max_size": 100,
                 "dns_cache_ttl": 300,
+                "dns_servers": [
+                    "8.8.8.8",  # Google DNS
+                    "1.1.1.1",  # Cloudflare DNS
+                    "9.9.9.9",  # Quad9 DNS
+                ],
+                "disable_dns_cache": False,
+                "dns_timeout": 2.0,
+                "dns_retries": 3,
             },
         }
         if config_file:

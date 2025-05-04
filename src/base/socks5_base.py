@@ -552,7 +552,6 @@ class SOCKS5Base:
                             else:
                                 # For other socket errors, raise the exception
                                 raise
-
                     except ConnectionError:
                         return
             except (select.error, socket.error) as e:
