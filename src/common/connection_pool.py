@@ -180,16 +180,16 @@ class ConnectionPool:
                     logger.debug("Discarding invalid socket from pool")
                     utils.close_socket(sock)
 
-        # Create new connection
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(const.DEFAULT_SOCKET_TIMEOUT)
-        try:
-            sock.connect((ip, port))
-            return sock
-        except Exception as e:
-            logger.error(f"Error creating connection to {host}({ip}):{port}: {e}")
-            utils.close_socket(sock)
-            return None
+            # Create new connection
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(const.DEFAULT_SOCKET_TIMEOUT)
+            try:
+                sock.connect((ip, port))
+                return sock
+            except Exception as e:
+                logger.error(f"Error creating connection to {host}({ip}):{port}: {e}")
+                utils.close_socket(sock)
+                return None
 
     def _is_socket_valid(self, sock: socket.socket):
         """
