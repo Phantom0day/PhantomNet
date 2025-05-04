@@ -210,7 +210,7 @@ class SOCKS5Client:
                     const.REPLY_COMMAND_NOT_SUPPORTED: "Command not supported",
                     const.REPLY_ADDRESS_TYPE_NOT_SUPPORTED: "Address type not supported",
                 }
-                error_msg = error_messages.get(status, f"Unknow error (code: {status})")
+                error_msg = error_messages.get(status, f"Unknown error (code: {status})")
                 logger.error(f"SOCKS5 connection request failed: {error_msg}")
                 return False
 

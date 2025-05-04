@@ -120,7 +120,7 @@ class ConnectionPool:
 
                 # Set a shorter timeout for retries
                 resolver.timeout = (
-                    config.get(const.KEY_POOL, const.KEY_DNS_TIMEOUT, 1.0)
+                    config.get(const.KEY_POOL, const.KEY_DNS_TIMEOUT, const.DEFAULT_DNS_TIMEOUT)
                     + attempt * 0.5
                 )  # Increase timeout with each retry
 

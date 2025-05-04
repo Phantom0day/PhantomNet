@@ -109,3 +109,4 @@ DEFAULT_DNS_SERVERS = [
     "9.9.9.9",  # Quad9 DNS
     "208.67.222.222",  # Open DNS
 ]
+DEFAULT_DNS_TIMEOUT = 2.0

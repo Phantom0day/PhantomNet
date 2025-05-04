@@ -45,7 +45,7 @@ class Config:
                 const.KEY_DNS_CACHE_TTL: 300,
                 const.KEY_DNS_SERVERS: const.DEFAULT_DNS_SERVERS,
                 const.KEY_DISABLE_DNS_CACHE: False,
-                const.KEY_DNS_TIMEOUT: 2.0,
+                const.KEY_DNS_TIMEOUT: const.DEFAULT_DNS_TIMEOUT,
                 const.KEY_DNS_RETRIES: 3,
             },
         }

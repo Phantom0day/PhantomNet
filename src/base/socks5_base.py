@@ -396,6 +396,7 @@ class SOCKS5Base:
 
                 # Parse SOCKS5 UDP header
                 if len(data) < 10:  # Minimum header size
+                    logger.debug("Invalid UDP packet: too short")
                     continue
 
                 frag, atyp = struct.unpack("!BB", data[:2])
