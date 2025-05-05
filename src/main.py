@@ -17,7 +17,7 @@ running = True
 
 def setup_logging(config):
     """Setup logging based on configuration"""
-    log_level_str = config.get("general", "log_level", "INFO")
+    log_level_str = config.get("general", "log_level", "DEBUG")
     log_file = config.get("general", "log_file")
     verbose = config.get("general", "verbose", False)
 

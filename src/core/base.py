@@ -75,54 +75,40 @@ class BaseProxy:
                 # Handle readable sockets
                 for s in r:
                     # Determine which direction data is flowing
-                    if s is client_sock:
-                        # Client -> Remote
-                        try:
-                            data = s.recv(DEFAULT_BUFFER_SIZE)
-                            if not data:
-                                # Connection closed
-                                return
+                    try:
+                        data = s.recv(DEFAULT_BUFFER_SIZE)
+                        if not data:
+                            # Connection closed
+                            return
 
+                        # Client -> Remote
+                        if s is client_sock:
                             # Update context with new data
                             context.request_data = data
                             context.response_data = b""
-
-                            # Process through interceptor chain
-                            chain = InterceptorChain(self.interceptor_wrappers)
-                            result = chain.proceed(context)
-
-                            # Check if connection should be dropped
-                            if result.should_drop:
-                                return
-
-                        except socket.error as e:
-                            if e.errno not in (errno.EAGAIN, errno.EWOULDBLOCK):
-                                logger.error(f"Client socket error: {e}")
-                                return
-                    else:
                         # Remote -> Client
-                        try:
-                            data = s.recv(DEFAULT_BUFFER_SIZE)
-                            if not data:
-                                # Connection closed
-                                return
-
+                        else:
                             # Update context with new data
                             context.request_data = b""
                             context.response_data = data
 
-                            # Process through interceptor chain
-                            chain = InterceptorChain(self.interceptor_wrappers)
-                            result = chain.proceed(context)
+                        # Process through interceptor chain
+                        chain = InterceptorChain(self.interceptor_wrappers)
+                        result = chain.proceed(context)
 
-                            # Check if connection should be dropped
-                            if result.should_drop:
-                                return
+                        # Check if connection should be dropped
+                        if result.should_drop:
+                            return
 
-                        except socket.error as e:
-                            if e.errno not in (errno.EAGAIN, errno.EWOULDBLOCK):
-                                logger.error(f"Remote socket error: {e}")
-                                return
+                    except socket.error as e:
+                        if e.errno == 10053:  # Connection aborted
+                            logger.debug(f"Connection closed by client: {e}")
+                            return
+                        if e.errno not in (errno.EAGAIN, errno.EWOULDBLOCK):
+                            logger.error(
+                                f"{'Client' if s is client_sock else 'Remote'} socket error: {e}"
+                            )
+                            return
 
                 # Run an idle cycle to let the DataForwardingInterceptor process any buffered data
                 if not r:
