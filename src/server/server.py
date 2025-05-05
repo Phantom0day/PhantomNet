@@ -3,10 +3,11 @@ import logging
 import select
 import socket
 import threading
-from typing import List
+from typing import Dict, List
 from src.core import *
 from src.interceptors import *
 from src.utils import *
+from src.server.udp_relay import UdpRelayServer
 
 log = logging.getLogger(__name__)
 
@@ -23,6 +24,8 @@ class RemoteServer(BaseProxy):
         super().__init__(interceptors)
         self.host = host
         self.port = port
+        # Maps TCP socket to UDP relay
+        self.udp_relays: Dict[socket.socket, UdpRelayServer] = {}
 
     def start(self):
         """Start the server"""
@@ -60,8 +63,12 @@ class RemoteServer(BaseProxy):
         finally:
             self.running = False
             sock.close()
+
+            for relay in self.udp_relays.values():
+                relay.stop()
             for client in self.clients.copy():
                 close_socket(client)
+
             log.debug("Remote server shutdown complete")
 
     def stop(self):
@@ -69,16 +76,28 @@ class RemoteServer(BaseProxy):
         log.info("Stopping remote server...")
         self.running = False
 
+        # Stop all UDP relays
+        for relay in self.udp_relays.values():
+            relay.stop()
+
     def _handle_client(self, client: socket.socket, addr: Tuple):
         """Handle client proxy connection"""
         self.clients.add(client)
         dest_sock = None
+        udp_relay = None
 
         try:
             # Receive initial data
             data = client.recv(DEFAULT_BUFFER_SIZE)
             if not data:
                 log.debug(f"No data received from client proxy at {addr[0]}:{addr[1]}")
+                return
+
+            # Check for UDP relay setup packet
+            if len(data) >= 3 and data[0] == 0x02:  # Type 2 = UDP setup
+                # This is a UDP relay setup request
+                log.info(f"UDP relay setup request from {addr[0]}:{addr[1]}")
+                self._setup_udp_relay(client, addr)
                 return
 
             # Create initial context
@@ -153,7 +172,38 @@ class RemoteServer(BaseProxy):
         finally:
             if client in self.clients:
                 self.clients.remove(client)
+            if client in self.udp_relays:
+                udp_relay = self.udp_relays.pop(client)
+                udp_relay.stop()
+
             close_socket(client)
             if dest_sock:
                 close_socket(dest_sock)
             log.debug(f"Connection from client proxy at {addr[0]}:{addr[1]} closed")
+
+    def _setup_udp_relay(self, client, addr):
+        """Set up UDP relay for client"""
+        try:
+            # Create and start UDP relay server
+            udp_relay = UdpRelayServer(client)
+
+            # Store the relay
+            self.udp_relays[client] = udp_relay
+
+            # Send success response
+            client.sendall(b"\x00")  # Success code
+
+            # Start the relay
+            udp_relay.start()
+
+            # The UDP relay thread will run until the TCP connection is closed
+            # We can return now and the client socket will be cleaned up when
+            # the connection is closed
+
+            log.info(f"UDP relay set up for {addr[0]}:{addr[1]}")
+        except Exception as e:
+            log.error(f"Failed to set up UDP relay: {e}")
+            try:
+                client.sendall(b"\x01")  # Error code
+            except:
+                pass
