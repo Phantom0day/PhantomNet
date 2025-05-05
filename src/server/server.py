@@ -11,7 +11,7 @@ from src.utils import *
 logger = logging.getLogger(__name__)
 
 
-class RemoteServer:
+class RemoteServer(BaseProxy):
     """
     Remote server that accepts connections from LocalClientProxy instances.
     Handles decoding the custom protocol and connecting to actual destinations.
@@ -28,14 +28,9 @@ class RemoteServer:
             port: Port number to bind to
             interceptors: List of interceptors to use for processing
         """
+        super().__init__(interceptors)
         self.host = host
         self.port = port
-        self.interceptors = interceptors or []
-        self.interceptor_wrappers = [
-            lambda ctx, chain, i=i: i.intercept(ctx, chain) for i in self.interceptors
-        ]
-        self.running = False
-        self.clients = set()  # Track active clients
 
     def start(self):
         """Start the remote server"""
@@ -180,87 +175,3 @@ class RemoteServer:
             if dest_sock:
                 close_socket(dest_sock)
             logger.info(f"Connection from client proxy at {addr[0]}:{addr[1]} closed")
-
-    def _proxy_data(self, client_sock: socket.socket, dest_sock: socket.socket, addr):
-        """Proxy data between client proxy and destination with interceptor processing"""
-        client_sock.setblocking(False)
-        dest_sock.setblocking(False)
-
-        while self.running:
-            try:
-                # Wait until client or destination is available for read
-                r, _, e = select.select(
-                    [client_sock, dest_sock],
-                    [],
-                    [client_sock, dest_sock],
-                    1.0,
-                )
-
-                if client_sock in e or dest_sock in e:
-                    # Socket error
-                    logger.debug(f"Socket error in proxy_data for {addr[0]}:{addr[1]}")
-                    break
-
-                for s in r:
-                    try:
-                        if s is client_sock:
-                            # Client Proxy -> Destination
-                            data = client_sock.recv(DEFAULT_BUFFER_SIZE)
-                            if not data:
-                                return
-
-                            # Process through interceptor chain
-                            context = ProtocolContext(
-                                client_socket=client_sock,
-                                remote_socket=dest_sock,
-                                request_data=data,
-                                protocol_stage="connected",
-                            )
-
-                            chain = InterceptorChain(self.interceptor_wrappers)
-                            result = chain.proceed(context)
-
-                            if result.should_drop:
-                                return
-
-                            # Send processed data to destination
-                            if result.processed_request:
-                                dest_sock.sendall(result.processed_request)
-                            else:
-                                dest_sock.sendall(data)
-
-                        else:
-                            # Destination -> Client Proxy
-                            data = dest_sock.recv(DEFAULT_BUFFER_SIZE)
-                            if not data:
-                                return
-
-                            # Process through interceptor chain
-                            context = ProtocolContext(
-                                client_socket=client_sock,
-                                remote_socket=dest_sock,
-                                response_data=data,
-                                protocol_stage="connected",
-                            )
-
-                            chain = InterceptorChain(self.interceptor_wrappers)
-                            result = chain.proceed(context)
-
-                            if result.should_drop:
-                                return
-
-                            # Send processed data to client proxy
-                            if result.processed_response:
-                                client_sock.sendall(result.processed_response)
-                            else:
-                                client_sock.sendall(data)
-
-                    except ConnectionError:
-                        return
-
-            except (select.error, socket.error) as e:
-                logger.error(f"Socket error in proxy_data for {addr[0]}:{addr[1]}: {e}")
-                break
-            except Exception as e:
-                logger.error(f"Error in proxy_data for {addr[0]}:{addr[1]}: {e}")
-                break
