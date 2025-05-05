@@ -1,0 +1,54 @@
+# PhantomSocket Default Configuration
+
+# Server configuration
+server:
+  host: 0.0.0.0
+  port: 8388
+  max_connections: 100
+  timeout: 300 # seconds
+
+# Local proxy configuration
+local:
+  host: 127.0.0.1
+  port: 1080
+  server_host: null # Must be specified by user
+  server_port: 8388
+  timeout: 300 # seconds
+
+# General settings
+general:
+  log_level: INFO
+  log_file: null # null means log to stdout
+  verbose: false
+
+# Default active profile
+active_profile: default
+
+# Interceptor profiles
+profiles:
+  # Basic profile with just data forwarding
+  default:
+    interceptors:
+      - name: DataForwardingInterceptor
+        enabled: true
+
+  # Basic obfuscation profile
+  basic_obfuscation:
+    interceptors:
+      - name: ObfuscationInterceptor
+        enabled: true
+        options:
+          prefix: "\u0000\u00ff"
+          suffix: "\u00ff\u0000"
+
+      - name: DataForwardingInterceptor
+        enabled: true
+
+  # HTTP camouflage profile
+  http_camouflage:
+    interceptors:
+      - name: HTTPCamouflageInterceptor
+        enabled: true
+
+      - name: DataForwardingInterceptor
+        enabled: true

@@ -35,8 +35,8 @@ The interceptor chain allows modification of both requests and responses passing
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/phantomsocket.git
-cd phantomsocket
+git clone https://github.com/Phantom0day/PhantomSocket.git
+cd PhantomSocket
 
 # Install the package
 pip install -e .
