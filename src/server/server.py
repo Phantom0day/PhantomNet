@@ -7,7 +7,7 @@ from typing import Dict, List
 from src.core import *
 from src.interceptors import *
 from src.utils import *
-from src.server.udp_relay import UdpRelayServer
+from src.transport.udp import UdpRelayServer
 
 log = logging.getLogger(__name__)
 

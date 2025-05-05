@@ -181,11 +181,7 @@ class ConfigLoader:
     ) -> Optional[Type[BaseInterceptor]]:
         """Get interceptor class by name"""
         modules = [
-            "src.interceptors.protocol",
-            "src.interceptors.security",
-            "src.interceptors.camouflage",
-            "src.interceptors.analysis",
-            "src.interceptors.optimize",
+            "src.interceptors",
         ]
 
         for mod_name in modules:

@@ -8,7 +8,7 @@ from typing import Dict, Optional, List
 from src.core import *
 from src.interceptors import *
 from src.utils import *
-from src.client.udp_relay import UdpRelay
+from src.transport.udp import UdpRelayClient
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class LocalClientProxy(BaseProxy):
         self.local_port = local_port
         self.server_host = server_host
         self.server_port = server_port
-        self.udp_relays: Dict[socket.socket, UdpRelay] = (
+        self.udp_relays: Dict[socket.socket, UdpRelayClient] = (
             {}
         )  # Maps TCP socket to UDP relay
 
@@ -236,7 +236,7 @@ class LocalClientProxy(BaseProxy):
         """Handle UDP ASSOCIATE command"""
         try:
             # Create UDP relay
-            udp_relay = UdpRelay(tcp_socket=None, client_addr=addr[0], client_port=None)
+            udp_relay = UdpRelayClient(tcp_socket=None, client_addr=addr[0], client_port=None)
 
             # Set up the UDP socket
             if not udp_relay.setup():

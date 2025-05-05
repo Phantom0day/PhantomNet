@@ -4,6 +4,9 @@ import os
 import sys
 import signal
 
+# Ensure we can import our modules
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from src.client import LocalClientProxy
 from src.server import RemoteServer
 from src.config import ConfigLoader
