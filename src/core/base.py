@@ -7,123 +7,107 @@ from typing import Optional, Tuple, List
 from src.core import *
 from src.utils import *
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class BaseProxy:
-    """Base class for proxy operations shared between client and server"""
+    """Base class for proxy operations"""
 
-    def __init__(self, interceptors=None):
+    def __init__(self, interceptors: Optional[List[BaseInterceptor]] = None):
         self.interceptors = interceptors or []
-        self.interceptor_wrappers = [
-            lambda ctx, chain, i=i: i.intercept(ctx, chain) for i in self.interceptors
-        ]
         self.running = False
         self.clients = set()  # Track active clients
 
     def stop(self):
-        """Stop the proxy server"""
-        logger.info("Stopping proxy...")
+        """Stop the proxy"""
+        log.info("Stopping proxy...")
         self.running = False
-        # Close all client connections
-        for client_sock in self.clients.copy():
-            close_socket(client_sock)
+        for sock in self.clients.copy():
+            close_socket(sock)
 
     def _proxy_data(
         self,
-        client_sock: socket.socket,
-        remote_sock: socket.socket,
+        client: socket.socket,
+        remote: socket.socket,
         addr: Optional[Tuple] = None,
     ):
-        """Proxy data between two sockets with improved error handling"""
-        client_sock.setblocking(False)
-        remote_sock.setblocking(False)
+        """Proxy data between client and remote"""
+        client.setblocking(False)
+        remote.setblocking(False)
 
         # Create initial context
-        context = ProtocolContext(
-            client_socket=client_sock,
-            remote_socket=remote_sock,
-            protocol_stage="connected",
+        ctx = ProtocolContext(
+            client=client,
+            remote=remote,
+            stage="connected",
         )
 
         # Initialize metadata for the interceptors
-        context.metadata["client_buffer"] = b""
-        context.metadata["remote_buffer"] = b""
+        ctx.meta["c_buf"] = b""
+        ctx.meta["r_buf"] = b""
 
+        chain = InterceptorChain(self.interceptors)
         try:
             while self.running:
-                # Determine which sockets to monitor
-                rlist = [client_sock, remote_sock]
-                wlist = []
+                # Select sockets to monitor
+                rlist = [client, remote]
 
-                # Wait for socket activity
                 try:
-                    r, _, e = select.select(rlist, [], [client_sock, remote_sock], 1.0)
+                    r, _, e = select.select(rlist, [], [client, remote], 1.0)
                 except (select.error, socket.error) as e:
-                    log_prefix = f"[{addr[0]}:{addr[1]}] " if addr else ""
-                    logger.error(f"{log_prefix}Select error: {e}")
+                    log.error(f"Select error: {e}")
                     break
 
                 # Handle errors
-                if client_sock in e or remote_sock in e:
+                if client in e or remote in e:
                     if addr:
-                        logger.debug(f"Socket error for {addr[0]}:{addr[1]}")
-                    else:
-                        logger.debug("Socket error detected")
+                        log.debug(f"Socket error for {addr[0]}:{addr[1]}")
                     break
 
                 # Handle readable sockets
                 for s in r:
-                    # Determine which direction data is flowing
                     try:
                         data = s.recv(DEFAULT_BUFFER_SIZE)
                         if not data:
-                            # Connection closed
                             return
 
                         # Client -> Remote
-                        if s is client_sock:
-                            # Update context with new data
-                            context.request_data = data
-                            context.response_data = b""
+                        if s is client:
+                            ctx.req_data = data
+                            ctx.resp_data = b""
                         # Remote -> Client
                         else:
-                            # Update context with new data
-                            context.request_data = b""
-                            context.response_data = data
+                            ctx.req_data = b""
+                            ctx.resp_data = data
 
                         # Process through interceptor chain
-                        chain = InterceptorChain(self.interceptor_wrappers)
-                        result = chain.proceed(context)
+                        result = chain.proceed(ctx)
 
-                        # Check if connection should be dropped
-                        if result.should_drop:
+                        if result.drop:
                             return
 
                     except socket.error as e:
                         if e.errno == 10053:  # Connection aborted
-                            logger.debug(f"Connection closed by client: {e}")
+                            log.debug(f"Connection closed by client: {e}")
                             return
                         if e.errno not in (errno.EAGAIN, errno.EWOULDBLOCK):
-                            logger.error(
-                                f"{'Client' if s is client_sock else 'Remote'} socket error: {e}"
+                            log.error(
+                                f"{'Client' if s is client else 'Remote'} socket error: {e}"
                             )
                             return
 
-                # Run an idle cycle to let the DataForwardingInterceptor process any buffered data
+                # Process any buffered data when no new data
                 if not r:
-                    context.request_data = b""
-                    context.response_data = b""
-                    chain = InterceptorChain(self.interceptor_wrappers)
-                    result = chain.proceed(context)
-                    if result.should_drop:
+                    ctx.req_data = b""
+                    ctx.resp_data = b""
+                    result = chain.proceed(ctx)
+                    if result.drop:
                         return
 
         except Exception as e:
             if addr:
-                logger.error(f"Error in proxy_data for {addr[0]}:{addr[1]}: {e}")
+                log.error(f"Error in proxy_data for {addr[0]}:{addr[1]}: {e}")
             else:
-                logger.error(f"Error in proxy_data: {e}")
+                log.error(f"Error in proxy_data: {e}")
         finally:
-            # Don't close sockets here; let the caller do it
             pass

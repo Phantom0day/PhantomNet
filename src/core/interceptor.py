@@ -1,27 +1,25 @@
-from src.core import ProtocolContext, InterceptorChain
+from src.core.context import ProtocolContext
+from src.core.chain import InterceptorChain
 
 
 class BaseInterceptor:
-    """Base class for interceptors"""
+    """Base interceptor interface"""
 
-    def intercept(
-        self,
-        context: ProtocolContext,
-        chain: InterceptorChain,
-    ) -> ProtocolContext:
-        # Pre process
-        context = self.pre_process(context)
+    def intercept(self, ctx: ProtocolContext, next_fn) -> ProtocolContext:
+        ctx = self.pre_process(ctx)
+        if ctx.drop:
+            return ctx
 
-        # pass to next interceptor
-        next_context = chain.proceed(context)
+        ctx = next_fn(ctx)
+        if ctx.drop:
+            return ctx
 
-        # post process
-        return self.post_process(next_context)
+        return self.post_process(ctx)
 
-    def pre_process(self, context: ProtocolContext) -> ProtocolContext:
+    def pre_process(self, ctx: ProtocolContext) -> ProtocolContext:
         """process inbound traffic"""
-        return context
+        return ctx
 
-    def post_process(self, context: ProtocolContext) -> ProtocolContext:
+    def post_process(self, ctx: ProtocolContext) -> ProtocolContext:
         """process outbound traffic"""
-        return context
+        return ctx

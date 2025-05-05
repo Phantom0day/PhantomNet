@@ -8,7 +8,7 @@ import logging
 from typing import Optional, Tuple, BinaryIO
 from src.utils.constants import *
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 def recv_all(socket_obj: socket.socket, n: int) -> bytes:
@@ -59,42 +59,42 @@ def parse_address(
             # IPv4 address (4 bytes)
             addr_data = data.read(4)
             if len(addr_data) < 4:
-                logger.error("Invalid IPv4 address length")
+                log.error("Invalid IPv4 address length")
                 return None, None
             addr = socket.inet_ntoa(addr_data)
         elif address_type == ATYP_DOMAIN:
             # Domain name (variable length)
             addr_len = data.read(1)
             if not addr_len:
-                logger.error("Failed to receive domain name length")
+                log.error("Failed to receive domain name length")
                 return None, None
             addr_len = ord(addr_len)
             addr_data = data.read(addr_len)
             if len(addr_data) < addr_len:
-                logger.error("Invalid domain name length")
+                log.error("Invalid domain name length")
                 return None, None
             addr = addr_data.decode("utf-8")
         elif address_type == ATYP_IPV6:
             # IPv6 address (16 bytes)
             addr_data = data.read(16)
             if len(addr_data) < 16:
-                logger.error("Invalid IPv6 address length")
+                log.error("Invalid IPv6 address length")
                 return None, None
             addr = socket.inet_ntop(socket.AF_INET6, addr_data)
         else:
-            logger.error(f"Unsupported address type: {address_type}")
+            log.error(f"Unsupported address type: {address_type}")
             return None, None
 
         # Get port (2 bytes)
         port_data = data.read(2)
         if len(port_data) < 2:
-            logger.error("Invalid port data")
+            log.error("Invalid port data")
             return addr, None
         port = struct.unpack("!H", port_data)[0]
 
         return addr, port
     except Exception as e:
-        logger.error(f"Error parsing address: {e}")
+        log.error(f"Error parsing address: {e}")
         return None, None
 
 
@@ -123,7 +123,7 @@ def create_socks_reply(
         reply += struct.pack("!H", bind_port)  # Port
         return reply
     except Exception as e:
-        logger.error(f"Error creating SOCKS reply: {e}")
+        log.error(f"Error creating SOCKS reply: {e}")
         # Create a generic failure reply
         return (
             struct.pack("!BBBB", SOCKS_VERSION, REPLY_GENERAL_FAILURE, 0, ATYP_IPV4)
@@ -154,7 +154,7 @@ def create_socks5_connect_request(dest_addr: str, dest_port: int) -> bytes:
         request += struct.pack("!H", dest_port)
         return request
     except Exception as e:
-        logger.error(f"Error creating SOCKS5 connect request: {e}")
+        log.error(f"Error creating SOCKS5 connect request: {e}")
         return b""
 
 
@@ -164,4 +164,4 @@ def close_socket(sock: socket.socket) -> None:
         try:
             sock.close()
         except Exception as e:
-            logger.error(f"Error closing socket: {e}")
+            log.error(f"Error closing socket: {e}")

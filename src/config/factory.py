@@ -5,58 +5,41 @@ from src.core import *
 from src.config import config
 from src.interceptors import *
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class ProfileFactory:
-    """Factory for creating interceptor profiles."""
+    """Factory for profile creation"""
 
     @staticmethod
     def create_profile(
-        profile_name: str, custom_config: Optional[Dict[str, Any]] = None
+        profile_name: str, custom_cfg: Optional[Dict[str, Any]] = None
     ) -> List[BaseInterceptor]:
-        """
-        Create a list of interceptors for a specific profile.
-
-        Args:
-            profile_name: Profile name
-            custom_config: Custom configuration overrides
-
-        Returns:
-            List[BaseInterceptor]: List of configured interceptors
-        """
-        if custom_config:
+        """Create interceptors for a profile"""
+        if custom_cfg:
             # Temporarily override configuration
-            original_config = config.config.copy()
-            config._update_config(custom_config)
+            orig_cfg = config.config.copy()
+            config._update_config(custom_cfg)
 
         # Get interceptors from configuration
         interceptors = config.create_interceptors(profile_name)
 
-        if custom_config:
+        if custom_cfg:
             # Restore original configuration
-            config.config = original_config
+            config.config = orig_cfg
 
         return interceptors
 
     @staticmethod
     def create_default_profile() -> List[BaseInterceptor]:
-        """Create the default profile with minimal functionality."""
+        """Create default profile"""
         return [DataForwardingInterceptor()]
 
     @staticmethod
     def create_stealth_profile(
         encryption_key: str = "default-key-change-me",
     ) -> List[BaseInterceptor]:
-        """
-        Create a stealth profile with maximum obfuscation.
-
-        Args:
-            encryption_key: AES encryption key
-
-        Returns:
-            List[BaseInterceptor]: List of configured interceptors
-        """
+        """Create stealth profile with maximum obfuscation"""
         return [
             # Security layer
             AESEncryptionInterceptor(key=encryption_key),
@@ -73,55 +56,40 @@ class ProfileFactory:
         ]
 
     @staticmethod
-    def create_http_camouflage_profile() -> List[BaseInterceptor]:
-        """Create a profile that disguises traffic as HTTP."""
+    def create_http_profile() -> List[BaseInterceptor]:
+        """Create HTTP camouflage profile"""
         return [
-            # HTTP camouflage
             HTTPCamouflageInterceptor(),
-            # Basic security
             ObfuscationInterceptor(),
-            # Traffic analysis resistance
             EntropyAdjustmentInterceptor(),
-            # Basic functionality
             DataForwardingInterceptor(),
         ]
 
     @staticmethod
-    def create_tls_camouflage_profile() -> List[BaseInterceptor]:
-        """Create a profile that disguises traffic as TLS."""
+    def create_tls_profile() -> List[BaseInterceptor]:
+        """Create TLS camouflage profile"""
         return [
-            # TLS camouflage
             TLSCamouflageInterceptor(),
-            # Basic security
             ObfuscationInterceptor(),
-            # Traffic analysis resistance
             EntropyAdjustmentInterceptor(),
-            # Basic functionality
             DataForwardingInterceptor(),
         ]
 
     @staticmethod
-    def create_video_camouflage_profile() -> List[BaseInterceptor]:
-        """Create a profile that disguises traffic as video streaming."""
+    def create_video_profile() -> List[BaseInterceptor]:
+        """Create video camouflage profile"""
         return [
-            # Video camouflage
             VideoCamouflageInterceptor(),
-            # Basic security
             ObfuscationInterceptor(),
-            # Traffic analysis resistance
             EntropyAdjustmentInterceptor(),
-            # Basic functionality
             DataForwardingInterceptor(),
         ]
 
     @staticmethod
-    def create_high_speed_profile() -> List[BaseInterceptor]:
-        """Create a profile optimized for speed with minimal obfuscation."""
+    def create_speed_profile() -> List[BaseInterceptor]:
+        """Create high-speed profile"""
         return [
-            # Basic obfuscation only
             ObfuscationInterceptor(),
-            # Performance optimization
             ZeroCopyInterceptor(),
-            # Basic functionality
             DataForwardingInterceptor(),
         ]

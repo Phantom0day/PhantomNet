@@ -7,15 +7,15 @@ from typing import Any, Optional, Dict
 class ProtocolContext:
     """Protocol context object"""
 
-    client_socket: socket.socket  # client socket
-    remote_socket: Optional[socket.socket] = None  # remote socket
-    request_data: bytes = b""  # original request data
-    processed_request: bytes = b""  # processed request data
-    response_data: bytes = b""  # original response data
-    processed_response: bytes = b""  # processed response data
-    metadata: Dict[str, Any] = field(default_factory=dict)  # extend meta data
-    should_drop: bool = False  # should drop the connection
+    client: socket.socket
+    remote: Optional[socket.socket] = None
+    req_data: bytes = b""
+    proc_req: bytes = b""
+    resp_data: bytes = b""
+    proc_resp: bytes = b""
+    meta: Dict[str, Any] = field(default_factory=dict)
+    drop: bool = False
     dest_addr: Optional[str] = None
     dest_port: Optional[int] = None
-    protocol_stage: str = "init"  # Track stage (init, handshake, connect, transfer)
-    error: Optional[Exception] = None  # Track errors
+    stage: str = "init"
+    error: Optional[Exception] = None

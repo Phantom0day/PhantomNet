@@ -16,17 +16,17 @@ running = True
 
 
 def setup_logging(config):
-    """Setup logging based on configuration"""
-    log_level_str = config.get("general", "log_level", "DEBUG")
+    """Setup logging"""
+    level_str = config.get("general", "log_level", "DEBUG")
     log_file = config.get("general", "log_file")
     verbose = config.get("general", "verbose", False)
 
     # Convert string log level to logging constant
-    log_level = getattr(logging, log_level_str.upper(), logging.INFO)
+    level = getattr(logging, level_str.upper(), logging.INFO)
 
     # If verbose, override log level to DEBUG
     if verbose:
-        log_level = logging.DEBUG
+        level = logging.DEBUG
 
     # Configure logging
     handlers = []
@@ -35,15 +35,13 @@ def setup_logging(config):
     else:
         handlers.append(logging.StreamHandler())
 
-    logging.basicConfig(
-        level=log_level, format=DEFAULT_LOGGING_FORMAT, handlers=handlers
-    )
+    logging.basicConfig(level=level, format=DEFAULT_LOGGING_FORMAT, handlers=handlers)
 
     return logging.getLogger(__name__)
 
 
 def signal_handler(sig, frame):
-    """Handle Ctrl+C and other termination signals"""
+    """Handle termination signals"""
     global running, server, local_proxy
     print("\nShutting down...")
     running = False
@@ -58,14 +56,12 @@ def run_server(config, logger):
     """Run in server mode"""
     global server
 
-    # Get server configuration
+    # Get configuration
     host = config.get("server", "host", "0.0.0.0")
     port = config.get("server", "port", 8388)
-
-    # Create interceptors from active profile
     interceptors = config.create_interceptors()
 
-    # Create and start the server
+    # Create and start server
     server = RemoteServer(host, port, interceptors)
     logger.info(f"Starting remote server on {host}:{port}")
     logger.info(f"Using profile: {config.get_active_profile()}")
@@ -86,7 +82,7 @@ def run_local_proxy(config, logger):
     """Run as local client proxy"""
     global local_proxy
 
-    # Get local proxy configuration
+    # Get configuration
     local_host = config.get("local", "host", "127.0.0.1")
     local_port = config.get("local", "port", 1080)
     server_host = config.get("local", "server_host")
@@ -98,7 +94,6 @@ def run_local_proxy(config, logger):
         )
         return
 
-    # Create interceptors from active profile
     interceptors = config.create_interceptors()
 
     # Create and start the local proxy
@@ -107,10 +102,10 @@ def run_local_proxy(config, logger):
     )
 
     logger.info(f"Starting local proxy on {local_host}:{local_port}")
-    logger.info(f"Forwarding to remote server at {server_host}:{server_port}")
-    logger.info(f"Using profile: {config.get_active_profile()}")
+    logger.info(f"Remote server: {server_host}:{server_port}")
+    logger.info(f"Profile: {config.get_active_profile()}")
     logger.info(
-        f"Active interceptors: {', '.join([i.__class__.__name__ for i in interceptors])}"
+        f"Interceptors: {', '.join([i.__class__.__name__ for i in interceptors])}"
     )
 
     try:
@@ -122,23 +117,23 @@ def run_local_proxy(config, logger):
         local_proxy.stop()
 
 
-def generate_default_config(output_path):
+def generate_config(path):
     """Generate default configuration file"""
     config = ConfigLoader()
-    if config.save_config(output_path):
-        print(f"Default configuration saved to {output_path}")
+    if config.save_config(path):
+        print(f"Config saved to {path}")
     else:
-        print(f"Failed to save default configuration to {output_path}")
+        print(f"Failed to save config to {path}")
 
 
 def main():
     """Main entry point"""
-    # Parse command line arguments
+    # Parse arguments
     parser = argparse.ArgumentParser(
         description="PhantomSocket - A modular SOCKS5 proxy with obfuscation capabilities"
     )
 
-    # Add common options
+    # Common options
     parser.add_argument("-c", "--config", help="Path to configuration file")
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="Enable verbose logging"
@@ -150,7 +145,7 @@ def main():
         help="Generate default configuration file and exit",
     )
 
-    # Create subparsers for different modes
+    # Mode subparsers
     subparsers = parser.add_subparsers(dest="mode", help="Operation mode")
 
     # Server mode
@@ -176,19 +171,17 @@ def main():
         help="Remote server port (default: 8388)",
     )
 
-    # Parse arguments
     args = parser.parse_args()
 
-    # Handle generate-config option
+    # Handle generate-config
     if args.generate_config:
-        generate_default_config(args.generate_config)
+        generate_config(args.generate_config)
         return
 
     # Load configuration
-    # First try the command-line specified config file
     config_file = args.config
 
-    # If not specified, try default locations
+    # Try default locations if not specified
     if not config_file:
         default_locations = [
             "./config.yaml",
@@ -198,18 +191,16 @@ def main():
             "/etc/phantomsocket/config.yaml",
         ]
 
-        for location in default_locations:
-            if os.path.exists(location):
-                config_file = location
+        for loc in default_locations:
+            if os.path.exists(loc):
+                config_file = loc
                 break
 
-    # Load the configuration
+    # Load config and update from args
     config = ConfigLoader(config_file)
-
-    # Update configuration from command-line arguments
     config.update_from_args(args)
 
-    # Setup logging based on configuration
+    # Setup logging
     logger = setup_logging(config)
 
     # Register signal handler

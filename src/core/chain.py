@@ -1,22 +1,20 @@
-from typing import Callable, List
+from typing import List
 from src.core import ProtocolContext
 
 
 class InterceptorChain:
-    def __init__(self, interceptors: List[Callable]):
+    def __init__(self, interceptors: List):
         self.interceptors = interceptors
-        self.position = 0
 
-    def proceed(self, context: ProtocolContext) -> ProtocolContext:
-        if self.position >= len(self.interceptors):
-            return context
+    def proceed(self, ctx: ProtocolContext) -> ProtocolContext:
+        if not self.interceptors:
+            return ctx
 
-        interceptor = self.interceptors[self.position]
-        self.position += 1
+        def create_next(idx):
+            if idx >= len(self.interceptors):
+                return lambda c: c
+            current = self.interceptors[idx]
+            next_fn = create_next(idx + 1)
+            return lambda c: current.intercept(c, next_fn)
 
-        try:
-            return interceptor(context, self)
-        except Exception as e:
-            context.error = e
-            context.should_drop = True
-            return context
+        return create_next(0)(ctx)

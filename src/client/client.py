@@ -1,3 +1,4 @@
+from io import BytesIO
 import logging
 import socket
 import select
@@ -8,29 +9,20 @@ from src.core import *
 from src.interceptors import *
 from src.utils import *
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class LocalClientProxy(BaseProxy):
-    """
-    Local SOCKS5 proxy that runs on the client side.
-    Accepts SOCKS5 connections from local applications and forwards them through
-    the secure tunnel to the remote server.
-    """
+    """SOCKS5 proxy that runs on the client side"""
 
     def __init__(
-        self, local_host, local_port, server_host, server_port, interceptors=None
+        self,
+        local_host: str,
+        local_port: int,
+        server_host: str,
+        server_port: int,
+        interceptors: List[BaseInterceptor] = None,
     ):
-        """
-        Initialize the local client proxy.
-
-        Args:
-            local_host: Local host to bind to
-            local_port: Local port to bind to
-            server_host: Remote server host
-            server_port: Remote server port
-            interceptors: List of interceptors to use for the secure tunnel
-        """
         super().__init__(interceptors)
         self.local_host = local_host
         self.local_port = local_port
@@ -40,281 +32,234 @@ class LocalClientProxy(BaseProxy):
     def start(self):
         """Start the local proxy server"""
         self.running = True
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
         try:
-            server_socket.bind((self.local_host, self.local_port))
-            server_socket.listen(5)
-            logger.info(
-                f"Local SOCKS5 proxy started on {self.local_host}:{self.local_port}"
-            )
-            logger.info(
-                f"Forwarding to remote server at {self.server_host}:{self.server_port}"
-            )
+            sock.bind((self.local_host, self.local_port))
+            sock.listen(5)
+            log.info(f"Local proxy started on {self.local_host}:{self.local_port}")
+            log.info(f"Forwarding to {self.server_host}:{self.server_port}")
 
             while self.running:
                 try:
-                    # Accept new connections with a timeout
-                    server_socket.settimeout(1.0)
+                    sock.settimeout(1.0)
                     try:
-                        client_sock, addr = server_socket.accept()
-                        logger.info(f"New local connection from {addr[0]}:{addr[1]}")
-                        # Start a new thread to handle each client
-                        client_thread = threading.Thread(
-                            target=self._handle_client, args=(client_sock, addr)
+                        client, addr = sock.accept()
+                        log.info(f"New connection from {addr[0]}:{addr[1]}")
+                        thread = threading.Thread(
+                            target=self._handle_client,
+                            args=(client, addr),
                         )
-                        client_thread.daemon = True
-                        client_thread.start()
+                        thread.daemon = True
+                        thread.start()
                     except socket.timeout:
                         continue
                     except Exception as e:
                         if self.running:
-                            logger.error(f"Error accepting connection: {e}")
+                            log.error(f"Accept error: {e}")
                 except KeyboardInterrupt:
                     break
 
         except Exception as e:
-            logger.error(f"Local proxy error: {e}")
+            log.error(f"Local proxy error: {e}")
         finally:
             self.running = False
-            server_socket.close()
-            # Close all client connections
-            for client_sock in self.clients.copy():
-                close_socket(client_sock)
-            logger.info("Local proxy shutdown complete")
+            sock.close()
+            for client in self.clients.copy():
+                close_socket(client)
 
     def stop(self):
         """Stop the local proxy server"""
-        logger.info("Stopping local proxy...")
+        log.info("Stopping local proxy...")
         self.running = False
 
-    def _handle_client(self, client_sock: socket.socket, addr):
-        """Handle a client connection from a local application"""
-        self.clients.add(client_sock)
-        remote_sock = None
+    def _handle_client(self, client: socket.socket, addr):
+        """Handle a client connection"""
+        self.clients.add(client)
+        remote = None
 
         try:
-            # Process local client's SOCKS5 handshake
-            if not self._handle_socks5_handshake(client_sock):
-                logger.error(f"SOCKS5 handshake failed for {addr[0]}:{addr[1]}")
+            # Handle SOCKS5 handshake
+            if not self._handle_socks5_handshake(client):
+                log.error(f"SOCKS5 handshake failed for {addr[0]}:{addr[1]}")
                 return
 
-            # Process local client's connection request
-            dest_addr, dest_port = self._handle_socks5_connect(client_sock)
+            # Handle connection request
+            dest_addr, dest_port = self._handle_socks5_connect(client)
             if not dest_addr or not dest_port:
-                logger.error(
-                    f"SOCKS5 connection request failed for {addr[0]}:{addr[1]}"
-                )
+                log.error(f"SOCKS5 connect failed for {addr[0]}:{addr[1]}")
                 return
 
-            logger.info(f"Connecting to {dest_addr}:{dest_port} via remote server")
+            log.info(f"Connecting to {dest_addr}:{dest_port} via server")
 
             # Connect to the remote server
-            remote_sock = self._connect_to_remote_server(dest_addr, dest_port)
-            if not remote_sock:
-                logger.error(
-                    f"Failed to connect to remote server for {addr[0]}:{addr[1]}"
-                )
-                # Send connection refused response to local client
+            remote = self._connect_to_server(dest_addr, dest_port)
+            if not remote:
+                log.error(f"Server connection failed for {addr[0]}:{addr[1]}")
                 response = create_socks_reply(REPLY_HOST_UNREACHABLE)
-                client_sock.sendall(response)
+                client.sendall(response)
                 return
 
-            # Send successful connection response to local client
-            bind_addr, bind_port = "0.0.0.0", 0  # Use placeholder values
-            response = create_socks_reply(REPLY_SUCCESS, bind_addr, bind_port)
-            client_sock.sendall(response)
+            # Send success response to client
+            response = create_socks_reply(REPLY_SUCCESS, "0.0.0.0", 0)
+            client.sendall(response)
 
             # Start proxying data
-            self._proxy_data(client_sock, remote_sock)
+            self._proxy_data(client, remote)
 
         except Exception as e:
-            logger.error(f"Error handling local client {addr[0]}:{addr[1]}: {e}")
+            log.error(f"Client error {addr[0]}:{addr[1]}: {e}")
         finally:
-            # Clean up
-            if client_sock in self.clients:
-                self.clients.remove(client_sock)
-            close_socket(client_sock)
-            if remote_sock:
-                close_socket(remote_sock)
-            logger.info(f"Local connection from {addr[0]}:{addr[1]} closed")
+            if client in self.clients:
+                self.clients.remove(client)
+            close_socket(client)
+            if remote:
+                close_socket(remote)
 
-    def _handle_socks5_handshake(self, client_sock: socket.socket) -> bool:
-        """
-        Handle the SOCKS5 handshake from a local client.
-
-        Returns:
-            bool: True if handshake successful, False otherwise
-        """
+    def _handle_socks5_handshake(self, client: socket.socket) -> bool:
+        """Handle the SOCKS5 handshake"""
         try:
-            # Receive client greeting
-            data = client_sock.recv(DEFAULT_BUFFER_SIZE)
+            data = client.recv(DEFAULT_BUFFER_SIZE)
             if not data or len(data) < 2:
-                logger.error("Invalid SOCKS5 handshake data")
+                log.debug("Invalid SOCKS5 handshake data")
                 return False
 
-            version, nmethods = data[0], data[1]
-            if version != SOCKS_VERSION:
-                logger.error(f"Unsupported SOCKS version: {version}")
+            ver, nmethods = data[0], data[1]
+            if ver != SOCKS_VERSION:
+                log.debug(f"Unsupported SOCKS version: {ver}")
                 return False
 
-            # Extract authentication methods
             methods = data[2 : 2 + nmethods]
 
-            # For now, only support no-auth
             if AUTH_NO_AUTH not in methods:
-                logger.error("No supported authentication methods")
-                # Send no acceptable methods response
+                log.debug("No supported authentication methods")
                 response = struct.pack("!BB", SOCKS_VERSION, AUTH_NO_ACCEPTABLE_METHODS)
-                client_sock.sendall(response)
+                client.sendall(response)
                 return False
 
-            # Send auth method choice (no auth)
             response = struct.pack("!BB", SOCKS_VERSION, AUTH_NO_AUTH)
-            client_sock.sendall(response)
+            client.sendall(response)
             return True
 
         except Exception as e:
-            logger.error(f"Error in SOCKS5 handshake: {e}")
+            log.error(f"Handshake error: {e}")
             return False
 
-    def _handle_socks5_connect(self, client_sock: socket.socket):
-        """
-        Handle the SOCKS5 connect request from a local client.
-
-        Returns:
-            tuple: (dest_addr, dest_port) or (None, None) if failed
-        """
+    def _handle_socks5_connect(self, client: socket.socket):
+        """Handle SOCKS5 connect request"""
         try:
-            # Receive connect request
-            data = client_sock.recv(DEFAULT_BUFFER_SIZE)
+            data = client.recv(DEFAULT_BUFFER_SIZE)
             if not data or len(data) < 4:
-                logger.error("Invalid SOCKS5 connect request")
+                log.debug("Invalid SOCKS5 connect request")
                 return None, None
 
-            version, cmd, _, address_type = struct.unpack("!BBBB", data[:4])
+            ver, cmd, _, addr_type = struct.unpack("!BBBB", data[:4])
 
-            if version != SOCKS_VERSION:
-                logger.error(f"Unsupported SOCKS version: {version}")
+            if ver != SOCKS_VERSION:
+                log.debug(f"Unsupported SOCKS version: {ver}")
                 return None, None
 
             if cmd != CMD_CONNECT:
-                logger.error(f"Unsupported command: {cmd}")
+                log.debug(f"Unsupported command: {cmd}")
                 response = create_socks_reply(REPLY_COMMAND_NOT_SUPPORTED)
-                client_sock.sendall(response)
+                client.sendall(response)
                 return None, None
 
-            # Parse destination address
-            remaining_data = data[4:]
-            from io import BytesIO
-
-            request_data = BytesIO(remaining_data)
-            dest_addr, dest_port = parse_address(request_data, address_type)
+            req_data = BytesIO(data[4:])
+            dest_addr, dest_port = parse_address(req_data, addr_type)
 
             if not dest_addr or not dest_port:
-                logger.error("Failed to parse destination address")
+                log.debug("Failed to parse destination address")
                 response = create_socks_reply(REPLY_ADDRESS_TYPE_NOT_SUPPORTED)
-                client_sock.sendall(response)
+                client.sendall(response)
                 return None, None
 
             return dest_addr, dest_port
 
         except Exception as e:
-            logger.error(f"Error handling SOCKS5 connect request: {e}")
+            log.error(f"Connect error: {e}")
+            response = create_socks_reply(REPLY_GENERAL_FAILURE)
             try:
-                response = create_socks_reply(REPLY_GENERAL_FAILURE)
-                client_sock.sendall(response)
+                client.sendall(response)
             except:
                 pass
             return None, None
 
-    def _connect_to_remote_server(self, dest_addr, dest_port):
-        """
-        Connect to the remote server and establish a secure tunnel.
-
-        Args:
-            dest_addr: Destination address requested by local client
-            dest_port: Destination port requested by local client
-
-        Returns:
-            socket.socket: Socket connected to remote server or None if connection fails
-        """
+    def _connect_to_server(self, dest_addr: str, dest_port: int):
+        """Connect to the remote server"""
         try:
-            # Create socket and connect to the remote server
-            remote_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            remote_sock.settimeout(10)  # 10 second timeout
-            remote_sock.connect((self.server_host, self.server_port))
+            remote = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            remote.settimeout(10)  # 10 second timeout
+            remote.connect((self.server_host, self.server_port))
 
-            # Create initial context with connection information
-            context = ProtocolContext(
-                client_socket=remote_sock,
+            # Create context with connection info
+            ctx = ProtocolContext(
+                client=remote,
                 dest_addr=dest_addr,
                 dest_port=dest_port,
-                protocol_stage="init",
+                stage="init",
             )
 
-            # Prepare data to send to remote server
-            # Format: [address_type(1) | address_len(1) | address(var) | port(2)]
-            addr_type = 3  # Domain name type
+            # Prepare destination information
+            addr_type = ATYP_DOMAIN
             addr_bytes = dest_addr.encode("utf-8")
             port_bytes = struct.pack("!H", dest_port)
             initial_data = (
                 struct.pack("!BB", addr_type, len(addr_bytes)) + addr_bytes + port_bytes
             )
 
-            # Store request data in context
-            context.request_data = initial_data
+            # Store request data
+            ctx.req_data = initial_data
 
             # Process through interceptor chain
-            chain = InterceptorChain(self.interceptor_wrappers)
-            result_ctx = chain.proceed(context)
+            chain = InterceptorChain(self.interceptors)
+            result = chain.proceed(ctx)
 
-            if result_ctx.should_drop:
-                logger.error("Remote connection drop requested by interceptor")
-                close_socket(remote_sock)
+            if result.drop:
+                log.debug("Remote connection drop requested by interceptor")
+                close_socket(remote)
                 return None
 
-            # Send processed data to remote server
-            if result_ctx.processed_request:
-                remote_sock.sendall(result_ctx.processed_request)
+            # Send processed data to server
+            if result.proc_req:
+                remote.sendall(result.proc_req)
             else:
-                remote_sock.sendall(initial_data)
+                remote.sendall(initial_data)
 
-            # Receive and process initial response from remote server
-            response = remote_sock.recv(DEFAULT_BUFFER_SIZE)
+            # Receive response from server
+            response = remote.recv(DEFAULT_BUFFER_SIZE)
             if not response:
-                logger.error("No response from remote server")
-                close_socket(remote_sock)
+                log.debug("No response from remote server")
+                close_socket(remote)
                 return None
 
-            # Process response through interceptor chain
-            resp_context = ProtocolContext(
-                client_socket=remote_sock, response_data=response, protocol_stage="init"
+            # Process response
+            resp_ctx = ProtocolContext(
+                client=remote,
+                resp_data=response,
+                stage="init",
             )
 
-            chain = InterceptorChain(self.interceptor_wrappers)
-            resp_result = chain.proceed(resp_context)
+            chain = InterceptorChain(self.interceptors)
+            resp_result = chain.proceed(resp_ctx)
 
-            if resp_result.should_drop:
-                logger.error("Connection drop requested by response interceptor")
-                close_socket(remote_sock)
+            if resp_result.drop:
+                log.debug("Connection drop requested by response interceptor")
+                close_socket(remote)
                 return None
 
             # Check if remote connection was successful
-            # The remote should send a simple acknowledgement
-            processed_response = resp_result.processed_response or response
-            if processed_response == b"\x00":  # Success code
-                return remote_sock
+            proc_resp = resp_result.proc_resp or response
+            if proc_resp == b"\x00":  # Success code
+                return remote
             else:
-                logger.error(
-                    f"Remote server connection failed: {processed_response.hex()}"
-                )
-                close_socket(remote_sock)
+                log.debug(f"Remote server connection failed: {proc_resp.hex()}")
+                close_socket(remote)
                 return None
 
         except Exception as e:
-            logger.error(f"Error connecting to remote server: {e}")
-            if "remote_sock" in locals() and remote_sock:
-                close_socket(remote_sock)
+            log.error(f"Server connection error: {e}")
+            if "remote" in locals() and remote:
+                close_socket(remote)
             return None
