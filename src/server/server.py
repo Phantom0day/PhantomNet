@@ -21,7 +21,7 @@ class RemoteServer(BaseProxy):
         port: int,
         interceptors: List[BaseInterceptor] = None,
     ):
-        super().__init__(interceptors)
+        super().__init__(interceptors, True)
         self.host = host
         self.port = port
         # Maps TCP socket to UDP relay
@@ -108,8 +108,7 @@ class RemoteServer(BaseProxy):
             )
 
             # Process through interceptor chain
-            chain = InterceptorChain(self.interceptors)
-            result = chain.proceed(ctx)
+            result = self.chain.proceed(ctx)
 
             if result.drop:
                 log.debug(f"Connection drop requested for {addr[0]}:{addr[1]}")

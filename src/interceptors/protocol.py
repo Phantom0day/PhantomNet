@@ -3,7 +3,8 @@ import logging
 import socket
 import struct
 from io import BytesIO
-from src.core import BaseInterceptor, ProtocolContext
+from src.core import ProtocolContext
+from src.interceptors.core import BaseInterceptor
 from src.utils.constants import *
 from src.utils import *
 
@@ -11,7 +12,7 @@ from src.utils import *
 class HandshakeInterceptor(BaseInterceptor):
     """SOCKS5 handshake interceptor"""
 
-    def pre_process(self, ctx):
+    def unpack(self, ctx):
         # Only process in init stage
         if ctx.stage != "init":
             return ctx
@@ -54,7 +55,10 @@ class HandshakeInterceptor(BaseInterceptor):
 class RoutingInterceptor(BaseInterceptor):
     """SOCKS5 connection routing interceptor"""
 
-    def pre_process(self, ctx):
+    def pack(self, ctx):
+        return ctx
+
+    def unpack(self, ctx):
         # Only process in handshake_complete stage
         if ctx.stage != "handshake_complete":
             return ctx
@@ -131,14 +135,11 @@ class RoutingInterceptor(BaseInterceptor):
             ctx.drop = True
             return ctx
 
-    def post_process(self, ctx):
-        return ctx
-
 
 class UDPAssociateInterceptor(BaseInterceptor):
     """Handles UDP associate command (optional, for future use)"""
 
-    def pre_process(self, ctx):
+    def unpack(self, ctx):
         # Only process in handshake_complete stage
         if ctx.stage != "handshake_complete":
             return ctx

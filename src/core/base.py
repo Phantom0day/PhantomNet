@@ -5,6 +5,7 @@ import socket
 from typing import Optional, Tuple, List
 
 from src.core import *
+from src.interceptors import BaseInterceptor
 from src.utils import *
 
 log = logging.getLogger(__name__)
@@ -13,10 +14,16 @@ log = logging.getLogger(__name__)
 class BaseProxy:
     """Base class for proxy operations"""
 
-    def __init__(self, interceptors: Optional[List[BaseInterceptor]] = None):
+    def __init__(
+        self,
+        interceptors: Optional[List[BaseInterceptor]] = None,
+        is_server=False,
+    ):
         self.interceptors = interceptors or []
         self.running = False
         self.clients = set()  # Track active clients
+        self.is_server = is_server
+        self.chain = InterceptorChain(self.interceptors, self.is_server)
 
     def stop(self):
         """Stop the proxy"""
@@ -46,7 +53,6 @@ class BaseProxy:
         ctx.meta["c_buf"] = b""
         ctx.meta["r_buf"] = b""
 
-        chain = InterceptorChain(self.interceptors)
         try:
             while self.running:
                 # Select sockets to monitor
@@ -81,7 +87,7 @@ class BaseProxy:
                             ctx.resp_data = data
 
                         # Process through interceptor chain
-                        result = chain.proceed(ctx)
+                        result = self.chain.proceed(ctx)
 
                         if result.drop:
                             return
@@ -100,7 +106,7 @@ class BaseProxy:
                 if not r:
                     ctx.req_data = b""
                     ctx.resp_data = b""
-                    result = chain.proceed(ctx)
+                    result = self.chain.proceed(ctx)
                     if result.drop:
                         return
 

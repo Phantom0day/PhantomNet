@@ -68,15 +68,16 @@ Configure your applications to use a SOCKS5 proxy with:
 PhantomSocket's power lies in its extensibility. Create custom interceptors by subclassing `BaseInterceptor`:
 
 ```python
-from src.core import BaseInterceptor, ProtocolContext
+from src.core import ProtocolContext
+from src.interceptors.core import BaseInterceptor
 
 class MyCustomInterceptor(BaseInterceptor):
-    def pre_process(self, context: ProtocolContext) -> ProtocolContext:
+    def pack(self, context: ProtocolContext) -> ProtocolContext:
         # Modify outgoing request
         context.processed_request = transform(context.request_data)
         return context
         
-    def post_process(self, context: ProtocolContext) -> ProtocolContext:
+    def unpack(self, context: ProtocolContext) -> ProtocolContext:
         # Modify incoming response
         context.processed_response = transform(context.response_data)
         return context

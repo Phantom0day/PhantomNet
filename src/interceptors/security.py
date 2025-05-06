@@ -5,7 +5,7 @@ import struct
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 
-from src.core import BaseInterceptor
+from src.interceptors.core import BaseInterceptor
 
 
 class AESEncryptionInterceptor(BaseInterceptor):
@@ -17,18 +17,18 @@ class AESEncryptionInterceptor(BaseInterceptor):
         else:
             self.key = key[:32].ljust(32, b"\0")
 
-    def pre_process(self, ctx):
+    def pack(self, ctx):
+        if ctx.resp_data:
+            ctx.proc_resp = self._encrypt(ctx.resp_data)
+        return ctx
+
+    def unpack(self, ctx):
         if ctx.req_data and self._is_encrypted(ctx.req_data):
             try:
                 ctx.proc_req = self._decrypt(ctx.req_data)
             except Exception as e:
                 # Log error but continue with original data
                 ctx.proc_req = ctx.req_data
-        return ctx
-
-    def post_process(self, ctx):
-        if ctx.resp_data:
-            ctx.proc_resp = self._encrypt(ctx.resp_data)
         return ctx
 
     def _is_encrypted(self, data):
@@ -57,7 +57,7 @@ class SecureHandshakeInterceptor(BaseInterceptor):
         )
         self.window = time_window
 
-    def pre_process(self, ctx):
+    def unpack(self, ctx):
         try:
             # Validate minimum length
             if len(ctx.req_data) < 8:
@@ -101,7 +101,7 @@ class PacketSizeNormalizer(BaseInterceptor):
     def __init__(self, target_sizes=(64, 256, 512, 1024)):
         self.sizes = target_sizes
 
-    def post_process(self, ctx):
+    def pack(self, ctx):
         if not ctx.resp_data:
             return ctx
 

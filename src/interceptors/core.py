@@ -1,6 +1,6 @@
 import errno
 import socket
-from src.core import BaseInterceptor, ProtocolContext
+from src.core import ProtocolContext
 from src.utils.constants import *
 from src.utils import *
 
@@ -8,8 +8,13 @@ from src.utils import *
 class BaseInterceptor:
     """Base interceptor interface"""
 
-    def intercept(self, ctx: ProtocolContext, next_fn) -> ProtocolContext:
-        ctx = self.pre_process(ctx)
+    def intercept(
+        self,
+        ctx: ProtocolContext,
+        reverse: bool,
+        next_fn,
+    ) -> ProtocolContext:
+        ctx = self.pack(ctx) if not reverse else self.unpack(ctx)
         if ctx.drop:
             return ctx
 
@@ -17,13 +22,13 @@ class BaseInterceptor:
         if ctx.drop:
             return ctx
 
-        return self.post_process(ctx)
+        return self.unpack(ctx) if not reverse else self.pack(ctx)
 
-    def pre_process(self, ctx: ProtocolContext) -> ProtocolContext:
+    def pack(self, ctx: ProtocolContext) -> ProtocolContext:
         """process inbound traffic"""
         return ctx
 
-    def post_process(self, ctx: ProtocolContext) -> ProtocolContext:
+    def unpack(self, ctx: ProtocolContext) -> ProtocolContext:
         """process outbound traffic"""
         return ctx
 
@@ -34,43 +39,7 @@ class DataForwardingInterceptor(BaseInterceptor):
     def __init__(self, buffer_size=10 * 1024 * 1024):
         self.MAX_BUFFER = buffer_size
 
-    def pre_process(self, ctx):
-        """Handle client->remote data flow"""
-        if ctx.stage != "connected":
-            return ctx
-
-        # Initialize buffers if needed
-        if "c_buf" not in ctx.meta:
-            ctx.meta["c_buf"] = b""
-        if "r_buf" not in ctx.meta:
-            ctx.meta["r_buf"] = b""
-
-        # Process any new request data
-        if ctx.req_data:
-            # Add to the remote buffer
-            ctx.meta["r_buf"] += ctx.req_data
-
-            # Try to send data to remote
-            if ctx.remote and ctx.meta["r_buf"]:
-                try:
-                    sent = ctx.remote.send(ctx.meta["r_buf"])
-                    ctx.meta["r_buf"] = ctx.meta["r_buf"][sent:]
-                except socket.error as e:
-                    if e.errno not in (errno.EAGAIN, errno.EWOULDBLOCK):
-                        log.error(f"Error sending to remote: {e}")
-                        ctx.drop = True
-
-            # Mark as processed
-            ctx.proc_req = b""
-
-        # Check buffer limits
-        if len(ctx.meta["r_buf"]) > self.MAX_BUFFER:
-            log.error("Remote buffer overflow")
-            ctx.drop = True
-
-        return ctx
-
-    def post_process(self, ctx):
+    def pack(self, ctx):
         """Handle remote->client data flow"""
         if ctx.stage != "connected":
             return ctx
@@ -119,4 +88,52 @@ class DataForwardingInterceptor(BaseInterceptor):
             log.error("Client buffer overflow")
             ctx.drop = True
 
+        return ctx
+
+    def unpack(self, ctx):
+        """Handle client->remote data flow"""
+        if ctx.stage != "connected":
+            return ctx
+
+        # Initialize buffers if needed
+        if "c_buf" not in ctx.meta:
+            ctx.meta["c_buf"] = b""
+        if "r_buf" not in ctx.meta:
+            ctx.meta["r_buf"] = b""
+
+        # Process any new request data
+        if ctx.req_data:
+            # Add to the remote buffer
+            ctx.meta["r_buf"] += ctx.req_data
+
+            # Try to send data to remote
+            if ctx.remote and ctx.meta["r_buf"]:
+                try:
+                    sent = ctx.remote.send(ctx.meta["r_buf"])
+                    ctx.meta["r_buf"] = ctx.meta["r_buf"][sent:]
+                except socket.error as e:
+                    if e.errno not in (errno.EAGAIN, errno.EWOULDBLOCK):
+                        log.error(f"Error sending to remote: {e}")
+                        ctx.drop = True
+
+            # Mark as processed
+            ctx.proc_req = b""
+
+        # Check buffer limits
+        if len(ctx.meta["r_buf"]) > self.MAX_BUFFER:
+            log.error("Remote buffer overflow")
+            ctx.drop = True
+
+        return ctx
+
+
+class PacketLogger(BaseInterceptor):
+    def pack(self, ctx):
+        if ctx.req_data:
+            log.debug("PACK>>", ctx.req_data.hex())
+        return ctx
+
+    def unpack(self, ctx):
+        if ctx.resp_data:
+            log.debug("UNPK<<", ctx.resp_data.hex())
         return ctx

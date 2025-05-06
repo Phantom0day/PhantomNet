@@ -236,7 +236,9 @@ class LocalClientProxy(BaseProxy):
         """Handle UDP ASSOCIATE command"""
         try:
             # Create UDP relay
-            udp_relay = UdpRelayClient(tcp_socket=None, client_addr=addr[0], client_port=None)
+            udp_relay = UdpRelayClient(
+                tcp_socket=None, client_addr=addr[0], client_port=None
+            )
 
             # Set up the UDP socket
             if not udp_relay.setup():
@@ -332,8 +334,7 @@ class LocalClientProxy(BaseProxy):
             ctx.req_data = initial_data
 
             # Process through interceptor chain
-            chain = InterceptorChain(self.interceptors)
-            result = chain.proceed(ctx)
+            result = self.chain.proceed(ctx)
 
             if result.drop:
                 log.debug("Remote connection drop requested by interceptor")
@@ -360,8 +361,7 @@ class LocalClientProxy(BaseProxy):
                 stage="init",
             )
 
-            chain = InterceptorChain(self.interceptors)
-            resp_result = chain.proceed(resp_ctx)
+            resp_result = self.chain.proceed(resp_ctx)
 
             if resp_result.drop:
                 log.debug("Connection drop requested by response interceptor")

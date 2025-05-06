@@ -55,7 +55,7 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
-def run_server(config, logger):
+def run_server(config: ConfigLoader, logger):
     """Run in server mode"""
     global server
 

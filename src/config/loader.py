@@ -5,7 +5,7 @@ import logging
 from typing import Dict, Any, List, Optional, Type
 import importlib
 
-from src.core import BaseInterceptor
+from src.interceptors import BaseInterceptor
 
 log = logging.getLogger(__name__)
 
@@ -118,7 +118,10 @@ class ConfigLoader:
         if section not in self.config:
             self.config[section] = {}
 
-        self.config[section][key] = value
+        if key:
+            self.config[section][key] = value
+        else:
+            self.config[section] = value
 
     def get_active_profile(self) -> str:
         """Get active profile name"""

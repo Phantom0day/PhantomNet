@@ -196,17 +196,18 @@ When developing custom interceptors, you can easily integrate them with the conf
 3. Add it to your configuration profile
 
 ```python
-from src.core import BaseInterceptor, ProtocolContext
+from src.core import ProtocolContext
+from src.interceptors.core import BaseInterceptor
 
 class MyCustomInterceptor(BaseInterceptor):
     def __init__(self, custom_option="default"):
         self.custom_option = custom_option
     
-    def pre_process(self, context: ProtocolContext) -> ProtocolContext:
+    def pack(self, context: ProtocolContext) -> ProtocolContext:
         # Custom pre-processing logic
         return context
     
-    def post_process(self, context: ProtocolContext) -> ProtocolContext:
+    def unpack(self, context: ProtocolContext) -> ProtocolContext:
         # Custom post-processing logic
         return context
 ```

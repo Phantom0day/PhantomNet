@@ -3,29 +3,14 @@ import random
 import time
 import math
 from collections import Counter
-from src.core import BaseInterceptor, ProtocolContext
-
-
-class ConnectionPoolInterceptor(BaseInterceptor):
-    """Connection reuse interceptor"""
-
-    def __init__(self):
-        self.pool = ConnectionPool(max_size=100)
-
-    def pre_process(self, context: ProtocolContext) -> ProtocolContext:
-        dest = (context.dest_addr, context.dest_port)
-        context.remote = self.pool.acquire(dest)
-        return context
-
-    def post_process(self, context):
-        self.pool.release(context.remote)
-        return context
+from src.core import ProtocolContext
+from src.interceptors.core import BaseInterceptor
 
 
 class ZeroCopyInterceptor(BaseInterceptor):
     """Zero copy optimization"""
 
-    def post_process(self, context: ProtocolContext) -> ProtocolContext:
+    def unpack(self, context: ProtocolContext) -> ProtocolContext:
         context.proc_resp = memoryview(context.resp_data)
         return context
 
@@ -36,7 +21,7 @@ class EntropyAdjustmentInterceptor(BaseInterceptor):
     def __init__(self, target_entropy=7.0):
         self.target = target_entropy
 
-    def post_process(self, ctx):
+    def pack(self, ctx):
         if not ctx.resp_data:
             return ctx
 
@@ -92,13 +77,7 @@ class TimingInterceptor(BaseInterceptor):
         self.max_delay = max_delay
         self.delay_prob = delay_prob
 
-    def pre_process(self, ctx):
-        # Random delay on some requests
-        if random.random() < self.delay_prob:
-            time.sleep(random.uniform(self.min_delay, self.max_delay / 2))
-        return ctx
-
-    def post_process(self, ctx):
+    def pack(self, ctx):
         # More likely to delay on larger responses
         if ctx.resp_data:
             size = len(ctx.resp_data)
@@ -111,6 +90,12 @@ class TimingInterceptor(BaseInterceptor):
                 delay = random.uniform(self.min_delay, self.max_delay * factor)
                 time.sleep(delay)
 
+        return ctx
+
+    def unpack(self, ctx):
+        # Random delay on some requests
+        if random.random() < self.delay_prob:
+            time.sleep(random.uniform(self.min_delay, self.max_delay / 2))
         return ctx
 
 
@@ -130,21 +115,7 @@ class DPIEvasionInterceptor(BaseInterceptor):
             b"POST ",
         ]
 
-    def pre_process(self, ctx):
-        if not ctx.req_data:
-            return ctx
-
-        if self.pattern_avoid:
-            # Check if request contains any known signatures
-            for sig in self.signatures:
-                if sig in ctx.req_data:
-                    # Modify slightly to avoid exact match
-                    ctx.proc_req = self._modify_pattern(ctx.req_data, sig)
-                    break
-
-        return ctx
-
-    def post_process(self, ctx):
+    def pack(self, ctx):
         if not ctx.resp_data:
             return ctx
 
@@ -159,6 +130,20 @@ class DPIEvasionInterceptor(BaseInterceptor):
             for sig in self.signatures:
                 if sig in ctx.resp_data:
                     ctx.proc_resp = self._modify_pattern(ctx.resp_data, sig)
+                    break
+
+        return ctx
+
+    def unpack(self, ctx):
+        if not ctx.req_data:
+            return ctx
+
+        if self.pattern_avoid:
+            # Check if request contains any known signatures
+            for sig in self.signatures:
+                if sig in ctx.req_data:
+                    # Modify slightly to avoid exact match
+                    ctx.proc_req = self._modify_pattern(ctx.req_data, sig)
                     break
 
         return ctx
@@ -183,7 +168,23 @@ class BehaviorSimulatorInterceptor(BaseInterceptor):
         self.periodic_keepalive = periodic_keepalive
         self.last_activity = time.time()
 
-    def pre_process(self, ctx):
+    def pack(self, ctx):
+        self.last_activity = time.time()
+
+        # Handle protocol-specific behaviors
+        if self.protocol == "http" and ctx.resp_data:
+            # Simulate HTTP chunked encoding for large responses
+            if len(ctx.resp_data) > 1024:
+                ctx.proc_resp = self._simulate_http_chunked(ctx.resp_data)
+
+        # Add keepalive if needed
+        if self.periodic_keepalive and time.time() - self.last_activity > 30:
+            # Mark for sending keepalive
+            ctx.meta["send_keepalive"] = True
+
+        return ctx
+
+    def unpack(self, ctx):
         self.last_activity = time.time()
 
         # Add protocol-specific behavior
@@ -197,22 +198,6 @@ class BehaviorSimulatorInterceptor(BaseInterceptor):
                 ],
                 "extensions": ["server_name", "ec_point_formats", "supported_groups"],
             }
-
-        return ctx
-
-    def post_process(self, ctx):
-        self.last_activity = time.time()
-
-        # Handle protocol-specific behaviors
-        if self.protocol == "http" and ctx.resp_data:
-            # Simulate HTTP chunked encoding for large responses
-            if len(ctx.resp_data) > 1024:
-                ctx.proc_resp = self._simulate_http_chunked(ctx.resp_data)
-
-        # Add keepalive if needed
-        if self.periodic_keepalive and time.time() - self.last_activity > 30:
-            # Mark for sending keepalive
-            ctx.meta["send_keepalive"] = True
 
         return ctx
 

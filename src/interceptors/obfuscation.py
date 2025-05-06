@@ -2,7 +2,8 @@ import struct
 import random
 import time
 import os
-from src.core import BaseInterceptor, ProtocolContext
+from src.core import ProtocolContext
+from src.interceptors.core import BaseInterceptor
 
 
 class ObfuscationInterceptor(BaseInterceptor):
@@ -12,7 +13,12 @@ class ObfuscationInterceptor(BaseInterceptor):
         self.prefix = prefix
         self.suffix = suffix
 
-    def pre_process(self, ctx):
+    def pack(self, ctx):
+        if ctx.resp_data:
+            ctx.proc_resp = self.prefix + ctx.resp_data + self.suffix
+        return ctx
+
+    def unpack(self, ctx):
         # Check if data has our markers
         if (
             ctx.req_data
@@ -21,11 +27,6 @@ class ObfuscationInterceptor(BaseInterceptor):
             and ctx.req_data.endswith(self.suffix)
         ):
             ctx.proc_req = ctx.req_data[len(self.prefix) : -len(self.suffix)]
-        return ctx
-
-    def post_process(self, ctx):
-        if ctx.resp_data:
-            ctx.proc_resp = self.prefix + ctx.resp_data + self.suffix
         return ctx
 
 
@@ -40,12 +41,7 @@ class ProtocolObfuscationInterceptor(BaseInterceptor):
             "tls_mimicry": self._add_tls_mimicry,
         }
 
-    def pre_process(self, ctx):
-        if ctx.req_data and self._is_obfuscated(ctx.req_data):
-            ctx.proc_req = self._deobfuscate(ctx.req_data)
-        return ctx
-
-    def post_process(self, ctx):
+    def pack(self, ctx):
         if not ctx.resp_data:
             return ctx
 
@@ -56,6 +52,11 @@ class ProtocolObfuscationInterceptor(BaseInterceptor):
 
         obfuscator = self.methods.get(method, self._add_random_padding)
         ctx.proc_resp = obfuscator(ctx.resp_data)
+        return ctx
+
+    def unpack(self, ctx):
+        if ctx.req_data and self._is_obfuscated(ctx.req_data):
+            ctx.proc_req = self._deobfuscate(ctx.req_data)
         return ctx
 
     def _is_obfuscated(self, data):
@@ -118,7 +119,16 @@ class HTTPCamouflageInterceptor(BaseInterceptor):
             b"assets.website.org",
         ]
 
-    def pre_process(self, ctx):
+    def pack(self, ctx):
+        # Only modify if we're using HTTP protocol
+        if ctx.meta.get("proto") != "http" or not ctx.resp_data:
+            return ctx
+
+        # Create HTTP response
+        ctx.proc_resp = self._build_http_response(ctx.resp_data)
+        return ctx
+
+    def unpack(self, ctx):
         # Check if this is HTTP-camouflaged traffic
         if ctx.req_data and self._is_http(ctx.req_data):
             # Parse out the real payload
@@ -132,15 +142,6 @@ class HTTPCamouflageInterceptor(BaseInterceptor):
             ctx.proc_req = self._build_http_request(ctx.req_data)
             ctx.meta["proto"] = "http"
 
-        return ctx
-
-    def post_process(self, ctx):
-        # Only modify if we're using HTTP protocol
-        if ctx.meta.get("proto") != "http" or not ctx.resp_data:
-            return ctx
-
-        # Create HTTP response
-        ctx.proc_resp = self._build_http_response(ctx.resp_data)
         return ctx
 
     def _is_http(self, data):
@@ -209,20 +210,7 @@ class TLSCamouflageInterceptor(BaseInterceptor):
         # TLS versions
         self.tls_1_2 = 0x0303
 
-    def pre_process(self, ctx):
-        # Extract real payload if it's TLS wrapped
-        if ctx.req_data and self._looks_like_tls(ctx.req_data):
-            payload = self._extract_from_tls(ctx.req_data)
-            if payload:
-                ctx.proc_req = payload
-                ctx.meta["proto"] = "tls"
-        # Wrap init data as client hello
-        elif ctx.stage == "init" and ctx.req_data:
-            ctx.proc_req = self._create_client_hello(ctx.req_data)
-            ctx.meta["proto"] = "tls"
-        return ctx
-
-    def post_process(self, ctx):
+    def pack(self, ctx):
         if ctx.meta.get("proto") != "tls" or not ctx.resp_data:
             return ctx
 
@@ -235,6 +223,19 @@ class TLSCamouflageInterceptor(BaseInterceptor):
             ctx.proc_resp = self._wrap_in_tls_record(
                 self.application_data, self.tls_1_2, ctx.resp_data
             )
+        return ctx
+
+    def unpack(self, ctx):
+        # Extract real payload if it's TLS wrapped
+        if ctx.req_data and self._looks_like_tls(ctx.req_data):
+            payload = self._extract_from_tls(ctx.req_data)
+            if payload:
+                ctx.proc_req = payload
+                ctx.meta["proto"] = "tls"
+        # Wrap init data as client hello
+        elif ctx.stage == "init" and ctx.req_data:
+            ctx.proc_req = self._create_client_hello(ctx.req_data)
+            ctx.meta["proto"] = "tls"
         return ctx
 
     def _looks_like_tls(self, data):
@@ -336,21 +337,7 @@ class VideoCamouflageInterceptor(BaseInterceptor):
     def __init__(self):
         self.video_magic = b"\x00\x00\x01\xba"  # MPEG-PS pack start code
 
-    def pre_process(self, ctx):
-        # Extract real data if it's video-camouflaged
-        if (
-            ctx.req_data
-            and len(ctx.req_data) > 8
-            and ctx.req_data.startswith(self.video_magic)
-        ):
-            # Data length is stored after the magic bytes
-            data_len = struct.unpack("!I", ctx.req_data[4:8])[0]
-            if len(ctx.req_data) >= 8 + data_len:
-                ctx.proc_req = ctx.req_data[8 : 8 + data_len]
-                ctx.meta["proto"] = "video"
-        return ctx
-
-    def post_process(self, ctx):
+    def pack(self, ctx):
         if not ctx.resp_data:
             return ctx
 
@@ -366,4 +353,18 @@ class VideoCamouflageInterceptor(BaseInterceptor):
         metadata = struct.pack("!IH", timestamp, random.randint(0, 0xFFFF))
 
         ctx.proc_resp = header + metadata + ctx.resp_data
+        return ctx
+
+    def unpack(self, ctx):
+        # Extract real data if it's video-camouflaged
+        if (
+            ctx.req_data
+            and len(ctx.req_data) > 8
+            and ctx.req_data.startswith(self.video_magic)
+        ):
+            # Data length is stored after the magic bytes
+            data_len = struct.unpack("!I", ctx.req_data[4:8])[0]
+            if len(ctx.req_data) >= 8 + data_len:
+                ctx.proc_req = ctx.req_data[8 : 8 + data_len]
+                ctx.meta["proto"] = "video"
         return ctx
