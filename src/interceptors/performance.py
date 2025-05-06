@@ -11,7 +11,7 @@ class ZeroCopyInterceptor(BaseInterceptor):
     """Zero copy optimization"""
 
     def unpack(self, context: ProtocolContext) -> ProtocolContext:
-        context.proc_resp = memoryview(context.resp_data)
+        context.resp_data = memoryview(context.resp_data)
         return context
 
 
@@ -22,17 +22,16 @@ class EntropyAdjustmentInterceptor(BaseInterceptor):
         self.target = target_entropy
 
     def pack(self, ctx):
-        if not ctx.resp_data:
+        data = ctx.req_data
+        if not data:
             return ctx
 
         # Calculate current entropy
-        current = self._calculate_entropy(ctx.resp_data)
+        current = self._calculate_entropy(data)
 
         # Adjust if needed
         if abs(current - self.target) > 0.5:
-            ctx.proc_resp = self._adjust_entropy(ctx.resp_data, current)
-        else:
-            ctx.proc_resp = ctx.resp_data
+            ctx.req_data = self._adjust_entropy(data, current)
 
         return ctx
 
@@ -78,9 +77,10 @@ class TimingInterceptor(BaseInterceptor):
         self.delay_prob = delay_prob
 
     def pack(self, ctx):
+        data = ctx.req_data
         # More likely to delay on larger responses
-        if ctx.resp_data:
-            size = len(ctx.resp_data)
+        if data:
+            size = len(data)
             # Probability based on size
             prob = min(0.8, self.delay_prob + (size / 100000))
 
@@ -116,7 +116,8 @@ class DPIEvasionInterceptor(BaseInterceptor):
         ]
 
     def pack(self, ctx):
-        if not ctx.resp_data:
+        data = ctx.req_data
+        if not data:
             return ctx
 
         # Mark for TCP segment splitting if enabled
@@ -128,22 +129,23 @@ class DPIEvasionInterceptor(BaseInterceptor):
         if self.pattern_avoid:
             # Avoid patterns in response too
             for sig in self.signatures:
-                if sig in ctx.resp_data:
-                    ctx.proc_resp = self._modify_pattern(ctx.resp_data, sig)
+                if sig in data:
+                    ctx.req_data = self._modify_pattern(data, sig)
                     break
 
         return ctx
 
     def unpack(self, ctx):
-        if not ctx.req_data:
+        data = ctx.resp_data
+        if not data:
             return ctx
 
         if self.pattern_avoid:
             # Check if request contains any known signatures
             for sig in self.signatures:
-                if sig in ctx.req_data:
+                if sig in data:
                     # Modify slightly to avoid exact match
-                    ctx.proc_req = self._modify_pattern(ctx.req_data, sig)
+                    ctx.resp_data = self._modify_pattern(data, sig)
                     break
 
         return ctx
@@ -169,13 +171,14 @@ class BehaviorSimulatorInterceptor(BaseInterceptor):
         self.last_activity = time.time()
 
     def pack(self, ctx):
+        data = ctx.req_data
         self.last_activity = time.time()
 
         # Handle protocol-specific behaviors
-        if self.protocol == "http" and ctx.resp_data:
+        if self.protocol == "http" and data:
             # Simulate HTTP chunked encoding for large responses
-            if len(ctx.resp_data) > 1024:
-                ctx.proc_resp = self._simulate_http_chunked(ctx.resp_data)
+            if len(data) > 1024:
+                ctx.req_data = self._simulate_http_chunked(data)
 
         # Add keepalive if needed
         if self.periodic_keepalive and time.time() - self.last_activity > 30:
@@ -185,6 +188,7 @@ class BehaviorSimulatorInterceptor(BaseInterceptor):
         return ctx
 
     def unpack(self, ctx):
+        data = ctx.resp_data
         self.last_activity = time.time()
 
         # Add protocol-specific behavior

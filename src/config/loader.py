@@ -34,16 +34,7 @@ class ConfigLoader:
                 "log_file": None,
                 "verbose": False,
             },
-            "profiles": {
-                "default": {
-                    "interceptors": [
-                        {
-                            "name": "DataForwardingInterceptor",
-                            "enabled": True,
-                        }
-                    ]
-                }
-            },
+            "profiles": {"default": {"interceptors": []}},
             "active_profile": "default",
         }
 

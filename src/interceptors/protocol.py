@@ -1,7 +1,9 @@
 import errno
 import logging
+import logging.config
 import socket
 import struct
+import time
 from io import BytesIO
 from src.core import ProtocolContext
 from src.interceptors.core import BaseInterceptor
@@ -12,12 +14,25 @@ from src.utils import *
 class HandshakeInterceptor(BaseInterceptor):
     """SOCKS5 handshake interceptor"""
 
-    def unpack(self, ctx):
+    def pack(self, ctx):
         # Only process in init stage
         if ctx.stage != "init":
             return ctx
 
         data = ctx.req_data
+
+        timestamp = struct.pack("!I", time.time() / 10)
+        ctx.stage = "handshake_complete"
+        log.debug("Handshake successful")
+
+        return ctx
+
+    def unpack(self, ctx):
+        # Only process in init stage
+        if ctx.stage != "init":
+            return ctx
+
+        data = ctx.resp_data
 
         # Validate data
         if not data or len(data) < 2 or data[0] != SOCKS_VERSION:
@@ -38,102 +53,18 @@ class HandshakeInterceptor(BaseInterceptor):
         if AUTH_NO_AUTH not in methods:
             log.error("No supported authentication methods")
             # Respond with no acceptable methods
-            ctx.proc_resp = struct.pack(
+            ctx.resp_data = struct.pack(
                 "!BB", SOCKS_VERSION, AUTH_NO_ACCEPTABLE_METHODS
             )
             ctx.drop = True
             return ctx
 
         # Accept NO_AUTH
-        ctx.proc_resp = struct.pack("!BB", SOCKS_VERSION, AUTH_NO_AUTH)
+        ctx.resp_data = struct.pack("!BB", SOCKS_VERSION, AUTH_NO_AUTH)
         ctx.stage = "handshake_complete"
         log.debug("Handshake successful")
 
         return ctx
-
-
-class RoutingInterceptor(BaseInterceptor):
-    """SOCKS5 connection routing interceptor"""
-
-    def pack(self, ctx):
-        return ctx
-
-    def unpack(self, ctx):
-        # Only process in handshake_complete stage
-        if ctx.stage != "handshake_complete":
-            return ctx
-
-        data = ctx.req_data
-
-        # Validate data
-        if not data or len(data) < 4:
-            log.error("Invalid request data length")
-            ctx.drop = True
-            return ctx
-
-        version, cmd, _, addr_type = struct.unpack("!BBBB", data[:4])
-
-        # Validate version
-        if version != SOCKS_VERSION:
-            log.error(f"Invalid SOCKS version: {version}")
-            ctx.drop = True
-            return ctx
-
-        # Only support CONNECT command
-        if cmd != CMD_CONNECT:
-            log.error(f"Unsupported command: {cmd}")
-            ctx.proc_resp = create_socks_reply(REPLY_COMMAND_NOT_SUPPORTED)
-            ctx.drop = True
-            return ctx
-
-        # Parse destination address and port
-        req_data = BytesIO(data[4:])
-        dest_addr, dest_port = parse_address(req_data, addr_type)
-
-        if not dest_addr or not dest_port:
-            log.error("Failed to parse destination address")
-            ctx.proc_resp = create_socks_reply(REPLY_ADDRESS_TYPE_NOT_SUPPORTED)
-            ctx.drop = True
-            return ctx
-
-        log.debug(f"Connecting to {dest_addr}:{dest_port}")
-
-        # Store destination in context
-        ctx.dest_addr = dest_addr
-        ctx.dest_port = dest_port
-
-        # Try to establish the connection
-        try:
-            remote = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            remote.settimeout(10)  # 10 second timeout
-            remote.connect((dest_addr, dest_port))
-            ctx.remote = remote
-
-            # Get the bound address/port
-            bind_addr, bind_port = remote.getsockname()
-
-            # Create success response
-            ctx.proc_resp = create_socks_reply(REPLY_SUCCESS, bind_addr, bind_port)
-
-            # Update protocol stage
-            ctx.stage = "connected"
-            return ctx
-
-        except socket.error as e:
-            log.error(f"Connection error: {e}")
-
-            # Send appropriate error response
-            if e.errno == 111:  # Connection refused
-                ctx.proc_resp = create_socks_reply(REPLY_CONNECTION_REFUSED)
-            elif e.errno == 113:  # No route to host
-                ctx.proc_resp = create_socks_reply(REPLY_HOST_UNREACHABLE)
-            elif e.errno == 101:  # Network unreachable
-                ctx.proc_resp = create_socks_reply(REPLY_NETWORK_UNREACHABLE)
-            else:
-                ctx.proc_resp = create_socks_reply(REPLY_GENERAL_FAILURE)
-
-            ctx.drop = True
-            return ctx
 
 
 class UDPAssociateInterceptor(BaseInterceptor):
@@ -144,7 +75,7 @@ class UDPAssociateInterceptor(BaseInterceptor):
         if ctx.stage != "handshake_complete":
             return ctx
 
-        data = ctx.req_data
+        data = ctx.resp_data
 
         # Check if this is a UDP ASSOCIATE command
         if not data or len(data) < 4:
@@ -174,7 +105,7 @@ class UDPAssociateInterceptor(BaseInterceptor):
             ctx.meta["udp_client"] = (client_addr, client_port)
 
             # Send success response with our UDP socket info
-            ctx.proc_resp = create_socks_reply(REPLY_SUCCESS, bind_addr, bind_port)
+            ctx.resp_data = create_socks_reply(REPLY_SUCCESS, bind_addr, bind_port)
 
             # Update stage for UDP association
             ctx.stage = "udp_associate"
@@ -184,7 +115,23 @@ class UDPAssociateInterceptor(BaseInterceptor):
 
         except Exception as e:
             log.error(f"UDP ASSOCIATE error: {e}")
-            ctx.proc_resp = create_socks_reply(REPLY_GENERAL_FAILURE)
+            ctx.resp_data = create_socks_reply(REPLY_GENERAL_FAILURE)
             ctx.drop = True
 
+        return ctx
+
+
+class PacketLogger(BaseInterceptor):
+    def __init__(self):
+        super().__init__()
+        self.log_enable = log.level <= logging.NOTSET
+
+    def pack(self, ctx):
+        if self.log_enable and ctx.req_data:
+            log.debug(f"PACK>>{ctx.req_data[:64].hex()}")
+        return ctx
+
+    def unpack(self, ctx):
+        if self.log_enable and ctx.resp_data:
+            log.debug(f"UNPK<<{ctx.resp_data[:64].hex()}")
         return ctx

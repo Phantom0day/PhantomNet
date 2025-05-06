@@ -10,23 +10,25 @@ class ObfuscationInterceptor(BaseInterceptor):
     """Simple traffic obfuscator"""
 
     def __init__(self, prefix=b"\x00\xff", suffix=b"\xff\x00"):
-        self.prefix = prefix
-        self.suffix = suffix
+        self.prefix = prefix.encode() if isinstance(prefix, str) else prefix
+        self.suffix = suffix.encode() if isinstance(suffix, str) else suffix
 
     def pack(self, ctx):
-        if ctx.resp_data:
-            ctx.proc_resp = self.prefix + ctx.resp_data + self.suffix
+        data = ctx.req_data
+        if data:
+            ctx.req_data = self.prefix + data + self.suffix
         return ctx
 
     def unpack(self, ctx):
+        data = ctx.resp_data
         # Check if data has our markers
         if (
-            ctx.req_data
-            and len(ctx.req_data) > len(self.prefix) + len(self.suffix)
-            and ctx.req_data.startswith(self.prefix)
-            and ctx.req_data.endswith(self.suffix)
+            data
+            and len(data) > len(self.prefix) + len(self.suffix)
+            and data.startswith(self.prefix)
+            and data.endswith(self.suffix)
         ):
-            ctx.proc_req = ctx.req_data[len(self.prefix) : -len(self.suffix)]
+            ctx.resp_data = data[len(self.prefix) : -len(self.suffix)]
         return ctx
 
 
@@ -42,7 +44,8 @@ class ProtocolObfuscationInterceptor(BaseInterceptor):
         }
 
     def pack(self, ctx):
-        if not ctx.resp_data:
+        data = ctx.req_data
+        if not data:
             return ctx
 
         # Select method
@@ -51,12 +54,13 @@ class ProtocolObfuscationInterceptor(BaseInterceptor):
             method = random.choice(list(self.methods.keys()))
 
         obfuscator = self.methods.get(method, self._add_random_padding)
-        ctx.proc_resp = obfuscator(ctx.resp_data)
+        ctx.req_data = obfuscator(data)
         return ctx
 
     def unpack(self, ctx):
-        if ctx.req_data and self._is_obfuscated(ctx.req_data):
-            ctx.proc_req = self._deobfuscate(ctx.req_data)
+        data = ctx.resp_data
+        if data and self._is_obfuscated(data):
+            ctx.resp_data = self._deobfuscate(data)
         return ctx
 
     def _is_obfuscated(self, data):
@@ -120,26 +124,28 @@ class HTTPCamouflageInterceptor(BaseInterceptor):
         ]
 
     def pack(self, ctx):
+        data = ctx.req_data
         # Only modify if we're using HTTP protocol
-        if ctx.meta.get("proto") != "http" or not ctx.resp_data:
+        if ctx.meta.get("proto") != "http" or not data:
             return ctx
 
         # Create HTTP response
-        ctx.proc_resp = self._build_http_response(ctx.resp_data)
+        ctx.req_data = self._build_http_request(data)
         return ctx
 
     def unpack(self, ctx):
+        data = ctx.resp_data
         # Check if this is HTTP-camouflaged traffic
-        if ctx.req_data and self._is_http(ctx.req_data):
+        if data and self._is_http(data):
             # Parse out the real payload
-            real_data = self._extract_payload(ctx.req_data)
+            real_data = self._extract_payload(data)
             if real_data:
-                ctx.proc_req = real_data
+                ctx.resp_data = real_data
                 ctx.meta["proto"] = "http"
 
         # If we're at init stage, wrap outgoing data in HTTP request
         elif ctx.stage == "init" and ctx.req_data:
-            ctx.proc_req = self._build_http_request(ctx.req_data)
+            ctx.resp_data = self._build_http_request(ctx.req_data)
             ctx.meta["proto"] = "http"
 
         return ctx
@@ -211,30 +217,32 @@ class TLSCamouflageInterceptor(BaseInterceptor):
         self.tls_1_2 = 0x0303
 
     def pack(self, ctx):
-        if ctx.meta.get("proto") != "tls" or not ctx.resp_data:
+        data = ctx.req_data
+        if ctx.meta.get("proto") != "tls" or not data:
             return ctx
 
         # Wrap response in TLS record
         if ctx.stage == "init":
             # Server hello for init response
-            ctx.proc_resp = self._create_server_hello(ctx.resp_data)
+            ctx.req_data = self._create_server_hello(data)
         else:
             # Application data for regular responses
-            ctx.proc_resp = self._wrap_in_tls_record(
-                self.application_data, self.tls_1_2, ctx.resp_data
+            ctx.req_data = self._wrap_in_tls_record(
+                self.application_data, self.tls_1_2, data
             )
         return ctx
 
     def unpack(self, ctx):
+        data = ctx.resp_data
         # Extract real payload if it's TLS wrapped
-        if ctx.req_data and self._looks_like_tls(ctx.req_data):
-            payload = self._extract_from_tls(ctx.req_data)
+        if data and self._looks_like_tls(data):
+            payload = self._extract_from_tls(data)
             if payload:
-                ctx.proc_req = payload
+                ctx.resp_data = payload
                 ctx.meta["proto"] = "tls"
         # Wrap init data as client hello
-        elif ctx.stage == "init" and ctx.req_data:
-            ctx.proc_req = self._create_client_hello(ctx.req_data)
+        elif ctx.stage == "init" and data:
+            ctx.resp_data = self._create_client_hello(data)
             ctx.meta["proto"] = "tls"
         return ctx
 
@@ -338,33 +346,30 @@ class VideoCamouflageInterceptor(BaseInterceptor):
         self.video_magic = b"\x00\x00\x01\xba"  # MPEG-PS pack start code
 
     def pack(self, ctx):
-        if not ctx.resp_data:
+        data = ctx.req_data
+        if not data:
             return ctx
 
         # Mark as video protocol
         ctx.meta["proto"] = "video"
 
         # Create fake video header
-        data_len = len(ctx.resp_data)
-        header = self.video_magic + struct.pack("!I", data_len)
+        header = self.video_magic + struct.pack("!I", len(data))
 
         # Add some fake video metadata
         timestamp = int(time.time() * 90000)  # MPEG timestamp (90kHz)
         metadata = struct.pack("!IH", timestamp, random.randint(0, 0xFFFF))
 
-        ctx.proc_resp = header + metadata + ctx.resp_data
+        ctx.req_data = header + metadata + data
         return ctx
 
     def unpack(self, ctx):
+        data = ctx.resp_data
         # Extract real data if it's video-camouflaged
-        if (
-            ctx.req_data
-            and len(ctx.req_data) > 8
-            and ctx.req_data.startswith(self.video_magic)
-        ):
+        if data and len(data) > 8 and data.startswith(self.video_magic):
             # Data length is stored after the magic bytes
-            data_len = struct.unpack("!I", ctx.req_data[4:8])[0]
-            if len(ctx.req_data) >= 8 + data_len:
-                ctx.proc_req = ctx.req_data[8 : 8 + data_len]
+            data_len = struct.unpack("!I", data[4:8])[0]
+            if len(data) >= 8 + data_len:
+                ctx.resp_data = data[8 : 8 + data_len]
                 ctx.meta["proto"] = "video"
         return ctx

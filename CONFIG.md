@@ -49,8 +49,6 @@ profiles:
   # Different profiles for different scenarios
   default:
     interceptors:
-      - name: DataForwardingInterceptor
-        enabled: true
   
   # Stealth profile for maximum censorship evasion
   stealth:
@@ -59,18 +57,16 @@ profiles:
         enabled: true
         options:
           key: "your-secure-key-here"
-      
+    
       - name: HTTPCamouflageInterceptor
         enabled: true
-      
+    
       - name: EntropyAdjustmentInterceptor
         enabled: true
-      
+    
       - name: TimingInterceptor
         enabled: true
-      
-      - name: DataForwardingInterceptor
-        enabled: true
+    
 ```
 
 ## Profiles
@@ -168,10 +164,10 @@ profiles:
         enabled: true
         options:
           key: "my-custom-key"
-      
+    
       - name: HTTPCamouflageInterceptor
         enabled: true
-      
+    
       # Add more interceptors as needed
 ```
 
@@ -202,11 +198,11 @@ from src.interceptors.core import BaseInterceptor
 class MyCustomInterceptor(BaseInterceptor):
     def __init__(self, custom_option="default"):
         self.custom_option = custom_option
-    
+  
     def pack(self, context: ProtocolContext) -> ProtocolContext:
         # Custom pre-processing logic
         return context
-    
+  
     def unpack(self, context: ProtocolContext) -> ProtocolContext:
         # Custom post-processing logic
         return context

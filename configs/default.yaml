@@ -29,8 +29,6 @@ profiles:
   # Basic profile with just data forwarding
   default:
     interceptors:
-      - name: DataForwardingInterceptor
-        enabled: true
 
   # Basic obfuscation profile
   basic_obfuscation:
@@ -41,8 +39,6 @@ profiles:
           prefix: "\u0000\u00ff"
           suffix: "\u00ff\u0000"
 
-      - name: DataForwardingInterceptor
-        enabled: true
 
   # HTTP camouflage profile
   http_camouflage:
@@ -50,5 +46,3 @@ profiles:
       - name: HTTPCamouflageInterceptor
         enabled: true
 
-      - name: DataForwardingInterceptor
-        enabled: true

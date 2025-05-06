@@ -93,6 +93,16 @@ class RemoteServer(BaseProxy):
                 log.debug(f"No data received from client proxy at {addr[0]}:{addr[1]}")
                 return
 
+            # Create initial context
+            ctx = ProtocolContext(
+                resp_data=data,
+                stage="init",
+            )
+
+            # Process through interceptor chain
+            result = self.chain.proceed(ctx)
+            data = ctx.resp_data
+
             # Check for UDP relay setup packet
             if len(data) >= 3 and data[0] == 0x02:  # Type 2 = UDP setup
                 # This is a UDP relay setup request
@@ -100,26 +110,13 @@ class RemoteServer(BaseProxy):
                 self._setup_udp_relay(client, addr)
                 return
 
-            # Create initial context
-            ctx = ProtocolContext(
-                client=client,
-                req_data=data,
-                stage="init",
-            )
-
-            # Process through interceptor chain
-            result = self.chain.proceed(ctx)
-
             if result.drop:
                 log.debug(f"Connection drop requested for {addr[0]}:{addr[1]}")
                 return
 
-            # Use the processed request data if available
-            proc_data = result.proc_req or data
-
             # Extract destination address and port from the processed data
             try:
-                data_io = BytesIO(proc_data)
+                data_io = BytesIO(data)
                 addr_type = data_io.read(1)[0]
 
                 if addr_type == ATYP_IPV4:

@@ -18,17 +18,19 @@ class AESEncryptionInterceptor(BaseInterceptor):
             self.key = key[:32].ljust(32, b"\0")
 
     def pack(self, ctx):
-        if ctx.resp_data:
-            ctx.proc_resp = self._encrypt(ctx.resp_data)
+        data = ctx.req_data
+        if data:
+            ctx.req_data = self._encrypt(data)
         return ctx
 
     def unpack(self, ctx):
-        if ctx.req_data and self._is_encrypted(ctx.req_data):
+        data = ctx.resp_data
+        if data and self._is_encrypted(data):
             try:
-                ctx.proc_req = self._decrypt(ctx.req_data)
+                ctx.resp_data = self._decrypt(data)
             except Exception as e:
                 # Log error but continue with original data
-                ctx.proc_req = ctx.req_data
+                pass
         return ctx
 
     def _is_encrypted(self, data):
@@ -58,14 +60,15 @@ class SecureHandshakeInterceptor(BaseInterceptor):
         self.window = time_window
 
     def unpack(self, ctx):
+        data = ctx.resp_data
         try:
             # Validate minimum length
-            if len(ctx.req_data) < 8:
+            if len(data) < 8:
                 ctx.drop = True
                 return ctx
 
             # Extract timestamp (first 4 bytes)
-            ts_bytes = ctx.req_data[:4]
+            ts_bytes = data[:4]
             timestamp = struct.unpack("!I", ts_bytes)[0]
             current = int(time.time())
 
@@ -75,7 +78,7 @@ class SecureHandshakeInterceptor(BaseInterceptor):
                 return ctx
 
             # Verify HMAC
-            provided_hmac = ctx.req_data[4:8]
+            provided_hmac = data[4:8]
             expected_hmac = self._calculate_hmac(ts_bytes)
 
             if not hmac.compare_digest(provided_hmac, expected_hmac):
@@ -83,7 +86,7 @@ class SecureHandshakeInterceptor(BaseInterceptor):
                 return ctx
 
             # Extract real payload
-            ctx.proc_req = ctx.req_data[8:]
+            ctx.resp_data = data[8:]
 
         except Exception:
             ctx.drop = True
@@ -102,10 +105,11 @@ class PacketSizeNormalizer(BaseInterceptor):
         self.sizes = target_sizes
 
     def pack(self, ctx):
-        if not ctx.resp_data:
+        data = ctx.req_data
+        if not data:
             return ctx
 
-        data_len = len(ctx.resp_data)
+        data_len = len(data)
 
         # Find target size
         target = next((s for s in self.sizes if s >= data_len), self.sizes[-1])
@@ -113,16 +117,16 @@ class PacketSizeNormalizer(BaseInterceptor):
         if data_len <= target:
             # Pad to target size
             padding = os.urandom(target - data_len)
-            ctx.proc_resp = ctx.resp_data + padding
+            ctx.req_data = data + padding
         else:
             # Split into multiple chunks of target size
             chunks = []
             for i in range(0, data_len, self.sizes[-1]):
-                chunk = ctx.resp_data[i : i + self.sizes[-1]]
+                chunk = data[i : i + self.sizes[-1]]
                 if len(chunk) < self.sizes[-1]:
                     chunk += os.urandom(self.sizes[-1] - len(chunk))
                 chunks.append(chunk)
 
-            ctx.proc_resp = b"".join(chunks)
+            ctx.req_data = b"".join(chunks)
 
         return ctx

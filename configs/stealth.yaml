@@ -54,6 +54,3 @@ profiles:
         options:
           target_sizes: [64, 256, 512, 1024]
 
-      # Basic data forwarding
-      - name: DataForwardingInterceptor
-        enabled: true

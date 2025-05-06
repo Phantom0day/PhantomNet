@@ -106,7 +106,7 @@ class LocalClientProxy(BaseProxy):
             # Handle based on command type
             if cmd_type == CMD_CONNECT:
                 # TCP CONNECT
-                log.info(f"TCP CONNECT to {dest_addr}:{dest_port}")
+                log.debug(f"TCP CONNECT to {dest_addr}:{dest_port}")
                 remote = self._handle_tcp_connect(client, dest_addr, dest_port, addr)
                 if not remote:
                     return
@@ -116,7 +116,7 @@ class LocalClientProxy(BaseProxy):
 
             elif cmd_type == CMD_UDP_ASSOCIATE:
                 # UDP ASSOCIATE
-                log.info(f"UDP ASSOCIATE request from {addr[0]}:{addr[1]}")
+                log.debug(f"UDP ASSOCIATE request from {addr[0]}:{addr[1]}")
                 self._handle_udp_associate(client, addr)
 
             else:
@@ -213,8 +213,6 @@ class LocalClientProxy(BaseProxy):
     def _handle_tcp_connect(self, client, dest_addr, dest_port, addr):
         """Handle TCP CONNECT command"""
         try:
-            log.info(f"Connecting to {dest_addr}:{dest_port} via server")
-
             # Connect to the remote server
             remote = self._connect_to_server(dest_addr, dest_port)
             if not remote:
@@ -303,7 +301,6 @@ class LocalClientProxy(BaseProxy):
 
             # Create context with connection info
             ctx = ProtocolContext(
-                client=remote,
                 dest_addr=dest_addr,
                 dest_port=dest_port,
                 stage="init",
@@ -336,16 +333,13 @@ class LocalClientProxy(BaseProxy):
             # Process through interceptor chain
             result = self.chain.proceed(ctx)
 
-            if result.drop:
+            if result.drop or not ctx.req_data:
                 log.debug("Remote connection drop requested by interceptor")
                 close_socket(remote)
                 return None
 
             # Send processed data to server
-            if result.proc_req:
-                remote.sendall(result.proc_req)
-            else:
-                remote.sendall(initial_data)
+            remote.sendall(result.req_data)
 
             # Receive response from server
             response = remote.recv(DEFAULT_BUFFER_SIZE)
@@ -356,7 +350,6 @@ class LocalClientProxy(BaseProxy):
 
             # Process response
             resp_ctx = ProtocolContext(
-                client=remote,
                 resp_data=response,
                 stage="init",
             )
@@ -369,7 +362,7 @@ class LocalClientProxy(BaseProxy):
                 return None
 
             # Check if remote connection was successful
-            proc_resp = resp_result.proc_resp or response
+            proc_resp = resp_result.resp_data or response
             if proc_resp == b"\x00":  # Success code
                 return remote
             else:

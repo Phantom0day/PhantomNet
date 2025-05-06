@@ -7,12 +7,10 @@ from typing import Any, Optional, Dict
 class ProtocolContext:
     """Protocol context object"""
 
-    client: socket.socket
+    client: Optional[socket.socket] = None
     remote: Optional[socket.socket] = None
     req_data: bytes = b""
-    proc_req: bytes = b""
     resp_data: bytes = b""
-    proc_resp: bytes = b""
     meta: Dict[str, Any] = field(default_factory=dict)
     drop: bool = False
     dest_addr: Optional[str] = None
