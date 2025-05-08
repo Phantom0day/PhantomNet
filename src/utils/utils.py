@@ -7,6 +7,7 @@ import struct
 import logging
 from typing import Optional, Tuple, BinaryIO
 from src.utils.constants import *
+from src.core.operation import Operation
 
 log = logging.getLogger(__name__)
 
@@ -165,3 +166,11 @@ def close_socket(sock: socket.socket) -> None:
             sock.close()
         except Exception as e:
             log.error(f"Error closing socket: {e}")
+
+
+def packAndSend(sock: socket.socket, chain, ctx, data: bytes = None):
+    if data:
+        ctx.req_data = data
+    ctx.operation = Operation.PACK
+    chain.run(ctx)
+    sock.sendall(ctx.req_data)

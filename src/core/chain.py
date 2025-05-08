@@ -1,22 +1,20 @@
 from typing import List
-from src.core import ProtocolContext
-from src.interceptors import BaseInterceptor
+from src.core.context import ProtocolContext, Operation
 
 
 class InterceptorChain:
-    def __init__(self, interceptors: List[BaseInterceptor], reverse=False):
+    def __init__(self, interceptors: List):
         self.interceptors = interceptors
-        self.reverse: bool = reverse
 
-    def proceed(self, ctx: ProtocolContext) -> ProtocolContext:
-        if not self.interceptors:
-            return ctx
+    def run(self, ctx: ProtocolContext) -> ProtocolContext:
+        chain = (
+            self.interceptors
+            if ctx.operation == Operation.PACK
+            else reversed(self.interceptors)
+        )
 
-        def create_next(idx):
-            if idx >= len(self.interceptors):
-                return lambda c: c
-            current: BaseInterceptor = self.interceptors[idx]
-            next_fn = create_next(idx + 1)
-            return lambda c: current.intercept(c, self.reverse, next_fn)
-
-        return create_next(0)(ctx)
+        for it in chain:
+            ctx = it.handle(ctx)
+            if ctx.drop:
+                break
+        return ctx

@@ -1,6 +1,7 @@
 import socket
 from dataclasses import dataclass, field
 from typing import Any, Optional, Dict
+from src.core.operation import Operation
 
 
 @dataclass
@@ -16,4 +17,5 @@ class ProtocolContext:
     dest_addr: Optional[str] = None
     dest_port: Optional[int] = None
     stage: str = "init"
+    operation: Operation = None
     error: Optional[Exception] = None

@@ -4,9 +4,9 @@ import select
 import socket
 from typing import Optional, Tuple, List
 
-from src.core import *
-from src.interceptors import BaseInterceptor
-from src.utils import *
+from src.core.context import ProtocolContext
+from src.core.chain import InterceptorChain, Operation
+from src.utils import close_socket, DEFAULT_BUFFER_SIZE
 
 log = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ class BaseProxy:
 
     def __init__(
         self,
-        interceptors: Optional[List[BaseInterceptor]] = None,
+        interceptors: Optional[List] = None,
         is_server=False,
         buffer_size=10 * 1024 * 1024,
     ):
@@ -24,7 +24,7 @@ class BaseProxy:
         self.running = False
         self.clients = set()  # Track active clients
         self.is_server = is_server
-        self.chain = InterceptorChain(self.interceptors, self.is_server)
+        self.chain = InterceptorChain(self.interceptors)
         self.MAX_BUFFER = buffer_size
 
     def stop(self):
@@ -36,18 +36,18 @@ class BaseProxy:
 
     def _proxy_data(
         self,
-        client: socket.socket,
-        remote: socket.socket,
+        in_sock: socket.socket,
+        out_sock: socket.socket,
         addr: Optional[Tuple] = None,
     ):
         """Proxy data between client and remote"""
-        client.setblocking(False)
-        remote.setblocking(False)
+        in_sock.setblocking(False)
+        out_sock.setblocking(False)
 
         # Create initial context
         ctx = ProtocolContext(
-            client=client,
-            remote=remote,
+            client=in_sock,
+            remote=out_sock,
             stage="connected",
         )
 
@@ -58,16 +58,16 @@ class BaseProxy:
         try:
             while self.running:
                 # Select sockets to monitor
-                rlist = [client, remote]
+                rlist = [in_sock, out_sock]
 
                 try:
-                    r, _, e = select.select(rlist, [], [client, remote], 1.0)
+                    r, _, e = select.select(rlist, [], [in_sock, out_sock], 1.0)
                 except (select.error, socket.error) as e:
                     log.error(f"Select error: {e}")
                     break
 
                 # Handle errors
-                if client in e or remote in e:
+                if in_sock in e or out_sock in e:
                     if addr:
                         log.debug(f"Socket error for {addr[0]}:{addr[1]}")
                     break
@@ -79,19 +79,19 @@ class BaseProxy:
                         if not data:
                             return
 
-                        result = ctx
                         # Client -> Remote
-                        if s is client:
-                            ctx.req_data = data
-                            ctx.resp_data = b""
+                        if s is in_sock:
+                            ctx.req_data, ctx.resp_data = data, b""
+                            ctx.operation = Operation.PACK
                         # Remote -> Client
                         else:
-                            ctx.req_data = b""
-                            ctx.resp_data = data
+                            ctx.req_data, ctx.resp_data = b"", data
+                            ctx.operation = Operation.UNPACK
 
-                        self._forward_data(ctx)
+                        ctx = self.chain.run(ctx)
+                        self._buffer_and_flush(ctx)
 
-                        if result.drop:
+                        if ctx.drop:
                             return
 
                     except socket.error as e:
@@ -100,7 +100,7 @@ class BaseProxy:
                             return
                         if e.errno not in (errno.EAGAIN, errno.EWOULDBLOCK):
                             log.error(
-                                f"{'Client' if s is client else 'Remote'} socket error: {e}"
+                                f"{'Client' if s is in_sock else 'Remote'} socket error: {e}"
                             )
                             return
 
@@ -108,8 +108,8 @@ class BaseProxy:
                 if not r:
                     ctx.req_data = b""
                     ctx.resp_data = b""
-                    result = self._forward_data(ctx)
-                    if result.drop:
+                    ctx = self._buffer_and_flush(ctx)
+                    if ctx.drop:
                         return
 
         except Exception as e:
@@ -120,73 +120,39 @@ class BaseProxy:
         finally:
             pass
 
-    def _forward_data(self, ctx):
+    def _buffer_and_flush(self, ctx: ProtocolContext):
         if ctx.stage != "connected":
             return ctx
 
-        # Handle remote->client data flow
         # Initialize buffers if needed
-        if "c_buf" not in ctx.meta:
-            ctx.meta["c_buf"] = b""
-        if "r_buf" not in ctx.meta:
-            ctx.meta["r_buf"] = b""
+        cb, rb = ctx.meta.setdefault("c_buf", b""), ctx.meta.setdefault("r_buf", b"")
 
-        # Try to receive from remote if needed
-        if ctx.remote and not ctx.resp_data:
-            try:
-                ctx.resp_data = ctx.remote.recv(DEFAULT_BUFFER_SIZE)
-                if ctx.resp_data == b"":  # Connection closed
-                    ctx.drop = True
-                    return ctx
-            except socket.error as e:
-                if e.errno not in (errno.EAGAIN, errno.EWOULDBLOCK):
-                    log.error(f"Error receiving from remote: {e}")
-                    ctx.drop = True
-                    return ctx
-
-        # Process any new response data
-        if ctx.resp_data:
-            # Add to client buffer
-            ctx.meta["c_buf"] += ctx.resp_data
-
-            # Try to send to client
-            if ctx.client and ctx.meta["c_buf"]:
-                try:
-                    sent = ctx.client.send(ctx.meta["c_buf"])
-                    ctx.meta["c_buf"] = ctx.meta["c_buf"][sent:]
-                except socket.error as e:
-                    if e.errno not in (errno.EAGAIN, errno.EWOULDBLOCK):
-                        log.error(f"Error sending to client: {e}")
-                        ctx.drop = True
-
-            # todo Mark as processed
-
-        # Check buffer limits
-        if len(ctx.meta["c_buf"]) > self.MAX_BUFFER:
-            log.error("Client buffer overflow")
-            ctx.drop = True
-
-        # Handle client->remote data flow
-        # Process any new request data
         if ctx.req_data:
-            # Add to the remote buffer
             ctx.meta["r_buf"] += ctx.req_data
+            ctx.req_data = b""
 
-            # Try to send data to remote
-            if ctx.remote and ctx.meta["r_buf"]:
-                try:
-                    sent = ctx.remote.send(ctx.meta["r_buf"])
-                    ctx.meta["r_buf"] = ctx.meta["r_buf"][sent:]
-                except socket.error as e:
-                    if e.errno not in (errno.EAGAIN, errno.EWOULDBLOCK):
-                        log.error(f"Error sending to remote: {e}")
-                        ctx.drop = True
+        if ctx.resp_data:
+            ctx.meta["c_buf"] += ctx.resp_data
+            ctx.resp_data = b""
 
-            # todo Mark as processed
+        if ctx.client and ctx.meta["c_buf"]:
+            try:
+                sent = ctx.client.send(ctx.meta["c_buf"])
+                ctx.meta["c_buf"] = ctx.meta["c_buf"][sent:]
+            except Exception:
+                ctx.drop = True
 
-        # Check buffer limits
-        if len(ctx.meta["r_buf"]) > self.MAX_BUFFER:
-            log.error("Remote buffer overflow")
+        if ctx.remote and ctx.meta["r_buf"]:
+            try:
+                sent = ctx.remote.send(ctx.meta["r_buf"])
+                ctx.meta["r_buf"] = ctx.meta["r_buf"][sent:]
+            except Exception:
+                ctx.drop = True
+
+        if (
+            len(ctx.meta["c_buf"]) > self.MAX_BUFFER
+            or len(ctx.meta["r_buf"]) > self.MAX_BUFFER
+        ):
             ctx.drop = True
 
         return ctx

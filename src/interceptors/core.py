@@ -1,33 +1,24 @@
+from abc import ABC
 import errno
 import socket
-from src.core import ProtocolContext
+from src.core import *
 from src.utils.constants import *
 from src.utils import *
 
 
-class BaseInterceptor:
+class BaseInterceptor(ABC):
     """Base interceptor interface"""
 
-    def intercept(
+    def handle(
         self,
         ctx: ProtocolContext,
-        reverse: bool,
-        next_fn,
     ) -> ProtocolContext:
-        ctx = self.pack(ctx) if not reverse else self.unpack(ctx)
-        if ctx.drop:
-            return ctx
-
-        ctx = next_fn(ctx)
-        if ctx.drop:
-            return ctx
-
-        return self.unpack(ctx) if not reverse else self.pack(ctx)
+        return self.pack(ctx) if ctx.operation is Operation.PACK else self.unpack(ctx)
 
     def pack(self, ctx: ProtocolContext) -> ProtocolContext:
-        """process inbound traffic"""
+        """process C2S traffic"""
         return ctx
 
     def unpack(self, ctx: ProtocolContext) -> ProtocolContext:
-        """process outbound traffic"""
+        """process S2C traffic"""
         return ctx

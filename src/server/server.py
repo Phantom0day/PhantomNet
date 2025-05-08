@@ -97,17 +97,18 @@ class RemoteServer(BaseProxy):
             ctx = ProtocolContext(
                 resp_data=data,
                 stage="init",
+                operation=Operation.UNPACK,
             )
 
             # Process through interceptor chain
-            result = self.chain.proceed(ctx)
+            result = self.chain.run(ctx)
             data = ctx.resp_data
 
             # Check for UDP relay setup packet
             if len(data) >= 3 and data[0] == 0x02:  # Type 2 = UDP setup
                 # This is a UDP relay setup request
                 log.info(f"UDP relay setup request from {addr[0]}:{addr[1]}")
-                self._setup_udp_relay(client, addr)
+                self._setup_udp_relay(client, ctx, addr)
                 return
 
             if result.drop:
@@ -137,11 +138,11 @@ class RemoteServer(BaseProxy):
                     dest_port = struct.unpack("!H", port_data)[0]
                 else:
                     log.debug(f"Unsupported address type: {addr_type}")
-                    client.sendall(b"\x01")  # Error code
+                    packAndSend(client, self.chain, ctx, b"\x01")
                     return
             except Exception as e:
                 log.error(f"Address parse error: {e}")
-                client.sendall(b"\x01")  # Error code
+                packAndSend(client, self.chain, ctx, b"\x01")
                 return
 
             log.info(f"Connecting to {dest_addr}:{dest_port}")
@@ -153,14 +154,14 @@ class RemoteServer(BaseProxy):
                 dest_sock.connect((dest_addr, dest_port))
 
                 # Send success response to client proxy
-                client.sendall(b"\x00")  # Success code
+                packAndSend(client, self.chain, ctx, b"\x00")
 
                 # Start proxying data
-                self._proxy_data(client, dest_sock, addr)
+                self._proxy_data(dest_sock, client, addr)
 
             except Exception as e:
                 log.error(f"Error on destination {dest_addr}:{dest_port}: {e}")
-                client.sendall(b"\x01")  # Error code
+                packAndSend(client, self.chain, ctx, b"\x01")
                 return
 
         except Exception as e:
@@ -177,7 +178,7 @@ class RemoteServer(BaseProxy):
                 close_socket(dest_sock)
             log.debug(f"Connection from client proxy at {addr[0]}:{addr[1]} closed")
 
-    def _setup_udp_relay(self, client, addr):
+    def _setup_udp_relay(self, client, ctx, addr):
         """Set up UDP relay for client"""
         try:
             # Create and start UDP relay server
@@ -187,7 +188,7 @@ class RemoteServer(BaseProxy):
             self.udp_relays[client] = udp_relay
 
             # Send success response
-            client.sendall(b"\x00")  # Success code
+            packAndSend(client, self.chain, ctx, b"\x00")
 
             # Start the relay
             udp_relay.start()
@@ -200,6 +201,6 @@ class RemoteServer(BaseProxy):
         except Exception as e:
             log.error(f"Failed to set up UDP relay: {e}")
             try:
-                client.sendall(b"\x01")  # Error code
+                packAndSend(client, self.chain, ctx, b"\x01")
             except:
                 pass

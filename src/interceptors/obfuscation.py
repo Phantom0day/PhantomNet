@@ -4,6 +4,7 @@ import time
 import os
 from src.core import ProtocolContext
 from src.interceptors.core import BaseInterceptor
+from Crypto.Util.strxor import strxor
 
 
 class ObfuscationInterceptor(BaseInterceptor):
@@ -12,23 +13,24 @@ class ObfuscationInterceptor(BaseInterceptor):
     def __init__(self, prefix=b"\x00\xff", suffix=b"\xff\x00"):
         self.prefix = prefix.encode() if isinstance(prefix, str) else prefix
         self.suffix = suffix.encode() if isinstance(suffix, str) else suffix
+        self.salt = prefix + suffix
+        if isinstance(self.salt, str):
+            self.salt = self.salt.encode()
 
     def pack(self, ctx):
         data = ctx.req_data
-        if data:
-            ctx.req_data = self.prefix + data + self.suffix
+        if data and len(data) >= len(self.salt):
+            ctx.req_data = (
+                strxor(self.salt, data[: len(self.salt)]) + data[len(self.salt) :]
+            )
         return ctx
 
     def unpack(self, ctx):
         data = ctx.resp_data
-        # Check if data has our markers
-        if (
-            data
-            and len(data) > len(self.prefix) + len(self.suffix)
-            and data.startswith(self.prefix)
-            and data.endswith(self.suffix)
-        ):
-            ctx.resp_data = data[len(self.prefix) : -len(self.suffix)]
+        if data and len(data) >= len(self.salt):
+            ctx.resp_data = (
+                strxor(self.salt, data[: len(self.salt)]) + data[len(self.salt) :]
+            )
         return ctx
 
 

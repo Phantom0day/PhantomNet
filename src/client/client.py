@@ -304,6 +304,7 @@ class LocalClientProxy(BaseProxy):
                 dest_addr=dest_addr,
                 dest_port=dest_port,
                 stage="init",
+                operation=Operation.PACK,
             )
 
             # Add UDP flag to metadata if this is for UDP relay
@@ -318,28 +319,17 @@ class LocalClientProxy(BaseProxy):
             if is_udp:
                 # For UDP, use a special marker packet
                 # Type 2 = UDP setup, length 0
-                initial_data = b"\x02" + struct.pack("!H", 0)
+                req_data = b"\x02" + struct.pack("!H", 0)
             else:
                 # For TCP, send the normal destination info
-                initial_data = (
+                req_data = (
                     struct.pack("!BB", addr_type, len(addr_bytes))
                     + addr_bytes
                     + port_bytes
                 )
 
-            # Store request data
-            ctx.req_data = initial_data
-
-            # Process through interceptor chain
-            result = self.chain.proceed(ctx)
-
-            if result.drop or not ctx.req_data:
-                log.debug("Remote connection drop requested by interceptor")
-                close_socket(remote)
-                return None
-
             # Send processed data to server
-            remote.sendall(result.req_data)
+            packAndSend(remote, self.chain, ctx, req_data)
 
             # Receive response from server
             response = remote.recv(DEFAULT_BUFFER_SIZE)
@@ -352,9 +342,10 @@ class LocalClientProxy(BaseProxy):
             resp_ctx = ProtocolContext(
                 resp_data=response,
                 stage="init",
+                operation=Operation.UNPACK,
             )
 
-            resp_result = self.chain.proceed(resp_ctx)
+            resp_result = self.chain.run(resp_ctx)
 
             if resp_result.drop:
                 log.debug("Connection drop requested by response interceptor")
