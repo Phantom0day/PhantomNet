@@ -6,9 +6,7 @@ from typing import Optional, Tuple, List
 
 from src.core.context import ProtocolContext
 from src.core.chain import InterceptorChain, Operation
-from src.utils import close_socket, DEFAULT_BUFFER_SIZE
-
-log = logging.getLogger(__name__)
+from src.utils import *
 
 
 class BaseProxy:

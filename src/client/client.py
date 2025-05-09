@@ -10,8 +10,6 @@ from src.interceptors import *
 from src.utils import *
 from src.transport.udp import UdpRelayClient
 
-log = logging.getLogger(__name__)
-
 
 class LocalClientProxy(BaseProxy):
     """SOCKS5 proxy that runs on the client side"""
@@ -331,29 +329,24 @@ class LocalClientProxy(BaseProxy):
             # Send processed data to server
             packAndSend(remote, self.chain, ctx, req_data)
 
+            resp_ctx = ProtocolContext(
+                stage="init",
+                operation=Operation.UNPACK,
+            )
             # Receive response from server
-            response = remote.recv(DEFAULT_BUFFER_SIZE)
-            if not response:
+            frame = recv_frame(remote, self.chain, resp_ctx)
+            if not frame:
                 log.debug("No response from remote server")
                 close_socket(remote)
                 return None
 
-            # Process response
-            resp_ctx = ProtocolContext(
-                resp_data=response,
-                stage="init",
-                operation=Operation.UNPACK,
-            )
-
-            resp_result = self.chain.run(resp_ctx)
-
-            if resp_result.drop:
+            if resp_ctx.drop:
                 log.debug("Connection drop requested by response interceptor")
                 close_socket(remote)
                 return None
 
             # Check if remote connection was successful
-            proc_resp = resp_result.resp_data or response
+            proc_resp = frame
             if proc_resp == b"\x00":  # Success code
                 return remote
             else:

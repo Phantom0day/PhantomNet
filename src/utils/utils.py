@@ -1,28 +1,33 @@
-"""
-Utility functions for SOCKS5 protocol handling.
-"""
-
+import errno
 import socket
 import struct
 import logging
 from typing import Optional, Tuple, BinaryIO
 from src.utils.constants import *
 from src.core.operation import Operation
+from src.core.chain import InterceptorChain
 
 log = logging.getLogger(__name__)
 
 
-def recv_all(socket_obj: socket.socket, n: int) -> bytes:
-    """
-    Receive exactly n bytes from a socket, or until EOF is hit.
-    """
-    data = b""
-    while len(data) < n:
-        packet = socket_obj.recv(n - len(data))
-        if not packet:
-            return data
-        data += packet
-    return data
+def recv_frame(sock: socket.socket, chain: InterceptorChain, ctx) -> Optional[bytes]:
+    while True:
+        try:
+            data = sock.recv(DEFAULT_BUFFER_SIZE)
+            if not data:
+                return None
+
+            ctx.resp_data = data
+            ctx = chain.run(ctx)
+            if ctx.drop:
+                return None
+            if ctx.resp_data:
+                frame, ctx.resp_data = ctx.resp_data, b""
+                return frame
+        except socket.error as e:
+            if e.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
+                continue
+            raise
 
 
 def get_address_type(addr: str) -> int:

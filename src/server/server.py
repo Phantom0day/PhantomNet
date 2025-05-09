@@ -9,8 +9,6 @@ from src.interceptors import *
 from src.utils import *
 from src.transport.udp import UdpRelayServer
 
-log = logging.getLogger(__name__)
-
 
 class RemoteServer(BaseProxy):
     """Server that accepts connections from client proxies"""
@@ -87,37 +85,31 @@ class RemoteServer(BaseProxy):
         udp_relay = None
 
         try:
-            # Receive initial data
-            data = client.recv(DEFAULT_BUFFER_SIZE)
-            if not data:
-                log.debug(f"No data received from client proxy at {addr[0]}:{addr[1]}")
-                return
-
             # Create initial context
             ctx = ProtocolContext(
-                resp_data=data,
                 stage="init",
                 operation=Operation.UNPACK,
             )
-
-            # Process through interceptor chain
-            result = self.chain.run(ctx)
-            data = ctx.resp_data
+            # Receive initial data
+            frame = recv_frame(client, self.chain, ctx)
+            if not frame:
+                log.debug(f"No data received from client proxy at {addr[0]}:{addr[1]}")
+                return
 
             # Check for UDP relay setup packet
-            if len(data) >= 3 and data[0] == 0x02:  # Type 2 = UDP setup
+            if len(frame) >= 3 and frame[0] == 0x02:  # Type 2 = UDP setup
                 # This is a UDP relay setup request
                 log.info(f"UDP relay setup request from {addr[0]}:{addr[1]}")
                 self._setup_udp_relay(client, ctx, addr)
                 return
 
-            if result.drop:
+            if ctx.drop:
                 log.debug(f"Connection drop requested for {addr[0]}:{addr[1]}")
                 return
 
             # Extract destination address and port from the processed data
             try:
-                data_io = BytesIO(data)
+                data_io = BytesIO(frame)
                 addr_type = data_io.read(1)[0]
 
                 if addr_type == ATYP_IPV4:

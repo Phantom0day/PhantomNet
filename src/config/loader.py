@@ -6,8 +6,7 @@ from typing import Dict, Any, List, Optional, Type
 import importlib
 
 from src.interceptors import BaseInterceptor
-
-log = logging.getLogger(__name__)
+from src.utils import *
 
 
 class ConfigLoader:

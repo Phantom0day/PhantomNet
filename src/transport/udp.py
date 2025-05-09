@@ -7,8 +7,6 @@ from io import BytesIO
 from src.utils.constants import *
 from src.utils.utils import *
 
-log = logging.getLogger(__name__)
-
 
 class BaseUdpRelay(threading.Thread):
     """Base class for UDP relay functionality"""
