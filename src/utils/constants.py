@@ -4,8 +4,8 @@ Constants used throughout the SOCKS5 proxy implementation.
 
 # Application version constants
 APP_VERSION_MAJOR = 0
-APP_VERSION_MINOR = 2
-APP_VERSION_PATCH = 1
+APP_VERSION_MINOR = 3
+APP_VERSION_PATCH = 0
 APP_VERSION = f"{APP_VERSION_MAJOR}.{APP_VERSION_MINOR}.{APP_VERSION_PATCH}"
 
 # SOCKS5 protocol constants

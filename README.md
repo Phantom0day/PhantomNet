@@ -1,4 +1,4 @@
-# PhantomSocket 0.2.x
+# WIP: PhantomSocket 0.3.0
 
 A **modular**, **obfuscatable** SOCKS-based proxy framework designed for censorship-circumvention research.
 
