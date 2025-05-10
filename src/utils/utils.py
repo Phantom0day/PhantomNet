@@ -103,6 +103,17 @@ def parse_address(
         return None, None
 
 
+def pack_address(address: Tuple[str, int], atyp):
+    if atyp == ATYP_IPV4:
+        raise NotImplementedError()
+    elif atyp == ATYP_DOMAIN:
+        addr_bytes = address[0].encode("utf-8")
+    elif atyp == ATYP_IPV6:
+        raise NotImplementedError()
+    port_bytes = struct.pack("!H", address[1])
+    return struct.pack("!BB", atyp, len(addr_bytes)) + addr_bytes + port_bytes
+
+
 def create_socks_reply(
     reply_code: int, bind_addr: str = "0.0.0.0", bind_port: int = 0
 ) -> bytes:

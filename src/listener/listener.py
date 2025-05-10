@@ -1,9 +1,10 @@
 import socket, threading, logging, select
 from src.utils import *
+from src.handler import Handler
 
 
 class TcpListener:
-    def __init__(self, bind: tuple[str, int], handler):
+    def __init__(self, bind: tuple[str, int], handler: Handler):
         self.bind = bind
         self.handler = handler
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

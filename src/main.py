@@ -7,8 +7,7 @@ import signal
 # Ensure we can import our modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.client import LocalClientProxy
-from src.server import RemoteServer
+from src.proxy import *
 from src.config import ConfigLoader
 from src.utils import *
 
@@ -65,7 +64,7 @@ def run_server(config: ConfigLoader, logger):
     interceptors = config.create_interceptors()
 
     # Create and start server
-    server = RemoteServer(host, port, interceptors)
+    server = ServerProxy(host, port, interceptors)
     logger.info(f"Starting remote server on {host}:{port}")
     logger.info(f"Using profile: {config.get_active_profile()}")
     logger.info(
@@ -100,7 +99,7 @@ def run_local_proxy(config, logger):
     interceptors = config.create_interceptors()
 
     # Create and start the local proxy
-    local_proxy = LocalClientProxy(
+    local_proxy = ClientProxy(
         local_host, local_port, server_host, server_port, interceptors
     )
 

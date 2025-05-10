@@ -1,6 +1,7 @@
 import select
-from src.core import *
+from src.core.context import *
 from src.utils import *
+from src.transport import *
 
 
 class Session:
@@ -9,9 +10,11 @@ class Session:
         inbound: socket.socket,
         outbound: socket.socket,
         chain: InterceptorChain,
+        adapter: TransportAdapter,
         max_buf=MAX_BUFFER_SIZE,
     ):
-        self.in_sock, self.out_sock = inbound, outbound
+        self.in_sock = adapter.wrap_inbound(inbound)
+        self.out_sock = adapter.wrap_outbound(outbound)
         self.chain = chain
         self.max_buf = max_buf
         self.buf_cli, self.buf_rem = b"", b""
@@ -46,6 +49,8 @@ class Session:
                             self.out_sock,
                             ProtocolContext(stage=stage, operation=Operation.UNPACK),
                         )
+        except Exception as e:
+            log.error(f"Session error: {e}")
         finally:
             close_socket(self.in_sock)
             close_socket(self.out_sock)

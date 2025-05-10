@@ -1,16 +1,22 @@
 class ProxyError(Exception):
     """Base exception for proxy errors"""
-    def __init__(self, code, message):
-        self.code = code
+
+    def __init__(self, message: str = "", code=0):
         self.message = message
+        self.code = code
         super().__init__(message)
 
-# Then use specific subclasses
-class ConnectionError(ProxyError):
-    """Connection related errors"""
-    pass
 
-class ConfigError(ProxyError):
-    """Configuration related errors"""
-    pass
+class SocksError(ProxyError): ...
 
+
+class SocksVersionError(SocksError): ...
+
+
+class SocksAuthError(SocksError): ...
+
+
+class ConnectionError(ProxyError): ...
+
+
+class ConfigError(ProxyError): ...
