@@ -1,22 +1,20 @@
-from typing import Callable, List
-from src.core import ProtocolContext
+from typing import List
+from src.core.context import ProtocolContext, Operation
 
 
 class InterceptorChain:
-    def __init__(self, interceptors: List[Callable]):
+    def __init__(self, interceptors: List):
         self.interceptors = interceptors
-        self.position = 0
 
-    def proceed(self, context: ProtocolContext) -> ProtocolContext:
-        if self.position >= len(self.interceptors):
-            return context
+    def run(self, ctx: ProtocolContext) -> ProtocolContext:
+        chain = (
+            self.interceptors
+            if ctx.operation is Operation.PACK
+            else reversed(self.interceptors)
+        )
 
-        interceptor = self.interceptors[self.position]
-        self.position += 1
-
-        try:
-            return interceptor(context, self)
-        except Exception as e:
-            context.error = e
-            context.should_drop = True
-            return context
+        for it in chain:
+            ctx = it.handle(ctx)
+            if ctx.drop:
+                break
+        return ctx

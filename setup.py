@@ -1,5 +1,5 @@
 from setuptools import setup, find_packages
-from src.common.constants import APP_VERSION
+from src.utils.constants import APP_VERSION
 
 setup(
     name="PhantomSocket",
@@ -12,5 +12,6 @@ setup(
     install_requires=[
         "pyyaml",  # For YAML config support
         "dnspython",  # For improved DNS resolution
+        "pycryptodome",  # For Cipher libs
     ],
 )

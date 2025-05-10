@@ -1,0 +1,51 @@
+# PhantomSocket Stealth Configuration
+# This profile focuses on maximum censorship evasion capabilities
+
+# Server configuration
+server:
+  host: 0.0.0.0
+  port: 8388
+  max_connections: 100
+  timeout: 300 # seconds
+
+# Local proxy configuration
+local:
+  host: 127.0.0.1
+  port: 1080
+  server_host: null # Must be specified by user
+  server_port: 8388
+  timeout: 300 # seconds
+
+# General settings
+general:
+  log_level: INFO
+  log_file: null # null means log to stdout
+  verbose: false
+
+# Default active profile
+active_profile: stealth
+
+# Interceptor profiles
+profiles:
+  # High security profile with multiple layers of obfuscation
+  stealth:
+    interceptors:
+      # Encrypt the traffic
+      - name: AESEncryptionInterceptor
+        enabled: true
+        options:
+          key: "change-this-to-a-secure-key"
+
+      # Adjust packet entropy to avoid statistical analysis
+      - name: EntropyAdjustmentInterceptor
+        enabled: true
+
+      # Add random timing variations
+      - name: TimingInterceptor
+        enabled: true
+
+      # Normalize packet sizes to prevent traffic analysis
+      - name: PacketSizeNormalizer
+        enabled: true
+        options:
+          target_sizes: [64, 256, 512, 1024]

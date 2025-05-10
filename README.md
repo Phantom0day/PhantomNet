@@ -1,150 +1,134 @@
-# PhantomSocket
+# PhantomSocket 0.2.x
 
-A modular SOCKS5 proxy implementation with interceptor chain architecture designed for network censorship circumvention.
+A **modular**, **obfuscatable** SOCKS-based proxy framework designed for censorship-circumvention research.
 
-## Overview
+---
 
-PhantomSocket is a specialized framework designed to bypass network censorship using various obfuscation and camouflage techniques. It consists of two main components:
+## 1 · Key Ideas
 
-1. **Local Client Proxy**: Runs on the user's machine and accepts SOCKS5 connections from local applications
-2. **Remote Server**: Receives connections from the local proxy and forwards them to the actual destinations
+| Layer | Responsibility | Typical Classes (src/…) |
+|-------|----------------|-------------------------|
+| **Listener** | Accept raw TCP/UDP connections and hand them off | `listener/TcpListener` |
+| **Handler** | Do protocol hand-shake / auth and decide target | `handler/Socks5ClientHandler`, `handler/Socks5ServerHandler` |
+| **Session** | Bi-directional data pump (select / asyncio) | `session/Session` |
+| **Interceptor** | Transform each **frame** (compress, encrypt, obfuscate, log…) | everything in `interceptors/` |
+| **Transport Adapter** | Optional extra wrapping (TLS, WS, QUIC…). Default is plain TCP | `transport/PlainTCPAdapter` |
 
-The framework uses a responsibility chain pattern similar to OkHttp's interceptor design, allowing easy addition of middleware components to handle protocol obfuscation, encryption, and other transformations.
+> Add a **new protocol** → implement a new *Handler* (and maybe a *TransportAdapter*).  
+> Add a **new obfuscation / crypto** → implement a new *Interceptor*.  
+> Other layers stay untouched.
 
-## Architecture
+---
 
-```
-+-------------+      +----------------+      +------------------+
-| Local App   | ---> | Local Proxy    | ---> | Remote Server    | ---> Internet
-| (Browser)   | <--- | (SOCKS5 Server)| <--- | (Custom Protocol)| <---
-+-------------+      +----------------+      +------------------+
-                       |         ^                |        ^
-                       v         |                v        |
-                    +-------------------------------+
-                    | Interceptor Chain (Transform) |
-                    +-------------------------------+
-```
-
-The interceptor chain allows modification of both requests and responses passing through either component:
-
-1. Each request passes through the interceptor chain before being sent
-2. Each response passes through the interceptor chain before being forwarded back
-3. Interceptors on the client and server sides should complement each other (e.g., if the client encrypts, the server should decrypt)
-
-## Installation
+## 2 · Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/phantomsocket.git
-cd phantomsocket
+# clone & editable-install
+git clone https://github.com/Phantom0day/PhantomSocket.git
+cd PhantomSocket && pip install -e .
+````
 
-# Install the package
-pip install -e .
-```
+Requires **Python ≥ 3.8** (tested on 3.11).
 
-## Usage
+---
 
-### Running the Remote Server
+## 3 · Quick Start
 
-```bash
-python run.py server --host 0.0.0.0 --port 8388
-```
-
-### Running the Local Client Proxy
+### Run remote server
 
 ```bash
-python run.py local --local-port 1080 --server-host your-server-ip --server-port 8388
+python run.py server  -c configs/default.yaml
 ```
 
-### Using the Proxy with Applications
+### Run local SOCKS5 proxy
 
-Configure your applications to use a SOCKS5 proxy with:
-- Host: 127.0.0.1
-- Port: 1080 (or whatever port you specified for --local-port)
-- No authentication
+```bash
+python run.py local   -c configs/default.yaml \
+                      --server-host <REMOTE_IP>
+```
 
-## Adding Custom Interceptors
+Point applications at **127.0.0.1:1080** for SOCKS5.
 
-PhantomSocket's power lies in its extensibility. Create custom interceptors by subclassing `BaseInterceptor`:
+> Add `-v` for verbose logs; use `--profile basic_obfuscation` to switch interceptor sets.
+
+---
+
+## 4 · Configuration Cheat-Sheet (`config.yaml`)
+
+```yaml
+server:
+  host: 0.0.0.0      # bind interface
+  port: 8388
+
+local:
+  host: 127.0.0.1    # local SOCKS5 bind
+  port: 1080
+  server_host: 203.0.113.1   # <-- remote server
+  server_port: 8388
+
+general:
+  log_level: INFO    # DEBUG for full dump
+
+active_profile: basic_obfuscation   # which profile below is active
+
+profiles:
+  basic_obfuscation:
+    interceptors:
+      - name: PacketLogger
+        options: {log_level: "debug"}
+      - name: ObfuscationInterceptor
+        options: {prefix: "\u0000\u00ff", suffix: "\u00ff\u0000"}
+```
+
+Every interceptor can be toggled on/off or given its own options.
+
+---
+
+## 5 · Writing Interceptors (Example)
 
 ```python
-from src.core import BaseInterceptor, ProtocolContext
+from src.interceptors.core import BaseInterceptor
 
-class MyCustomInterceptor(BaseInterceptor):
-    def pre_process(self, context: ProtocolContext) -> ProtocolContext:
-        # Modify outgoing request
-        context.processed_request = transform(context.request_data)
-        return context
-        
-    def post_process(self, context: ProtocolContext) -> ProtocolContext:
-        # Modify incoming response
-        context.processed_response = transform(context.response_data)
-        return context
+class CaesarShift(BaseInterceptor):
+    def __init__(self, shift=3):
+        self.shift = shift
+
+    def pack(self, ctx):
+        ctx.data = bytes((b + self.shift) % 256 for b in ctx.data)
+        return ctx
+
+    def unpack(self, ctx):
+        ctx.data = bytes((b - self.shift) % 256 for b in ctx.data)
+        return ctx
 ```
 
-Then add your interceptor to the chain in your server and client:
+Add it to a profile and run—no other code changes needed.
 
-```python
-# For the client
-local_proxy = LocalClientProxy(
-    "127.0.0.1", 
-    1080, 
-    "your-server-ip", 
-    8388,
-    interceptors=[
-        MyEncryptionInterceptor(),
-        MyObfuscationInterceptor()
-    ]
-)
+---
 
-# For the server
-server = RemoteServer(
-    "0.0.0.0", 
-    8388,
-    interceptors=[
-        MyDecryptionInterceptor(),
-        MyDeobfuscationInterceptor()
-    ]
-)
+## 6 · Directory Layout (core parts)
+
+```
+├── src/
+│   ├── listener/      # TcpListener etc.
+│   ├── handler/       # protocol hand-shake
+│   ├── session/       # select-loop data pump
+│   ├── interceptors/  # obfuscation / crypto / log
+│   ├── transport/     # PlainTCPAdapter / future TLS
+│   └── proxy/         # glue code (ClientProxy / ServerProxy)
+└── configs/           # sample yaml profiles
 ```
 
-## Included Interceptor Categories
+---
 
-PhantomSocket includes several interceptor categories that you can implement:
+## 7 · Roadmap
 
-### Security Interceptors
-- Encryption/decryption of traffic
-- Protocol obfuscation
-- Packet size normalization
+* 🔒 TLS / gRPC transport adapters
+* 🚀 UDP-associate & QUIC backend
+* 📈 Prometheus metrics export
 
-### Camouflage Interceptors
-- Traffic disguised as HTTP/HTTPS
-- Traffic disguised as TLS
-- Traffic disguised as video streaming
+---
 
-### Analysis Evasion Interceptors
-- DPI (Deep Packet Inspection) evasion
-- Entropy adjustment
-- Timing randomization
+## 8 · Disclaimer & License
 
-### Optimization Interceptors
-- Connection pooling
-- Performance optimizations
-
-## Security Considerations
-
-- The default implementation (without interceptors) provides **no security** - all traffic is sent in plaintext
-- Add appropriate interceptors for encryption and obfuscation based on your threat model
-- Always use strong encryption for sensitive traffic
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Disclaimer
-
-This tool is designed for legitimate privacy protection and censorship circumvention. Users are responsible for complying with local laws and regulations.
+PhantomSocket is MIT-licensed and intended **solely for legitimate privacy protection and research**. Users are responsible for complying with local laws.

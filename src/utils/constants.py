@@ -2,6 +2,12 @@
 Constants used throughout the SOCKS5 proxy implementation.
 """
 
+# Application version constants
+APP_VERSION_MAJOR = 0
+APP_VERSION_MINOR = 2
+APP_VERSION_PATCH = 1
+APP_VERSION = f"{APP_VERSION_MAJOR}.{APP_VERSION_MINOR}.{APP_VERSION_PATCH}"
+
 # SOCKS5 protocol constants
 SOCKS_VERSION = 5
 
@@ -33,7 +39,7 @@ AUTH_USERNAME_PASSWORD = 2
 AUTH_NO_ACCEPTABLE_METHODS = 255
 
 # Buffer sizes
-DEFAULT_BUFFER_SIZE = 4096
-
+DEFAULT_BUFFER_SIZE = 2048
+MAX_BUFFER_SIZE = 10 * 1024 * 1024
 # Logging
 DEFAULT_LOGGING_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
