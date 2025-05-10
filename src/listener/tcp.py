@@ -1,6 +1,32 @@
+import socket, threading, logging, select
+from src.utils import *
+
+
 class TcpListener:
-    def __init__(self, bind, handler):
-        pass
+    def __init__(self, bind: tuple[str, int], handler):
+        self.bind = bind
+        self.handler = handler
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._running = False
 
     def serve_forever(self):
-        pass
+        self._sock.bind(self.bind)
+        self._sock.listen()
+        self._running = True
+        log.info(f"Listening on {self.bind[0]}:{self.bind[1]}")
+        while self._running:
+            try:
+                conn, peer = self._sock.accept()
+                t = threading.Thread(
+                    target=self.handler,
+                    args=(conn, peer),
+                    daemon=True,
+                )
+                t.start()
+            except OSError:
+                break
+
+    def close(self):
+        self._running = False
+        close_socket(self._sock)
