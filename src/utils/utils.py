@@ -29,6 +29,16 @@ def recv_frame(sock: socket.socket, chain: InterceptorChain, ctx) -> Optional[by
             raise
 
 
+def recv_exact(sock: socket.socket, n: int) -> Optional[bytes]:
+    buf = bytearray()
+    while len(buf) < n:
+        chunk = sock.recv(n - len(buf))
+        if not chunk:
+            raise EOFError("unexpected EOF")
+        buf.extend(chunk)
+    return bytes(buf)
+
+
 def get_address_type(addr: str) -> int:
     """
     Determine the SOCKS5 address type for a given address string.
