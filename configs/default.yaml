@@ -38,11 +38,3 @@ profiles:
         options:
           prefix: "\u0000\u00ff"
           suffix: "\u00ff\u0000"
-
-
-  # HTTP camouflage profile
-  http_camouflage:
-    interceptors:
-      - name: HTTPCamouflageInterceptor
-        enabled: true
-

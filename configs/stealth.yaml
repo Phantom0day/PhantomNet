@@ -36,10 +36,6 @@ profiles:
         options:
           key: "change-this-to-a-secure-key"
 
-      # Make traffic look like HTTP
-      - name: HTTPCamouflageInterceptor
-        enabled: true
-
       # Adjust packet entropy to avoid statistical analysis
       - name: EntropyAdjustmentInterceptor
         enabled: true
@@ -53,4 +49,3 @@ profiles:
         enabled: true
         options:
           target_sizes: [64, 256, 512, 1024]
-

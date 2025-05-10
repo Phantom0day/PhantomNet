@@ -7,8 +7,9 @@ import threading
 from typing import Dict, Optional, List
 from src.core import *
 from src.interceptors import *
-from src.utils import *
+from src.session import *
 from src.transport.udp import UdpRelayClient
+from src.utils import *
 
 
 class LocalClientProxy(BaseProxy):
@@ -106,11 +107,8 @@ class LocalClientProxy(BaseProxy):
                 # TCP CONNECT
                 log.debug(f"TCP CONNECT to {dest_addr}:{dest_port}")
                 remote = self._handle_tcp_connect(client, dest_addr, dest_port, addr)
-                if not remote:
-                    return
-
-                # Start proxying data
-                self._proxy_data(client, remote)
+                if remote:
+                    Session(remote, client, self.chain).loop()
 
             elif cmd_type == CMD_UDP_ASSOCIATE:
                 # UDP ASSOCIATE
@@ -299,8 +297,6 @@ class LocalClientProxy(BaseProxy):
 
             # Create context with connection info
             ctx = ProtocolContext(
-                dest_addr=dest_addr,
-                dest_port=dest_port,
                 stage="init",
                 operation=Operation.PACK,
             )

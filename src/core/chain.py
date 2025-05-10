@@ -9,7 +9,7 @@ class InterceptorChain:
     def run(self, ctx: ProtocolContext) -> ProtocolContext:
         chain = (
             self.interceptors
-            if ctx.operation == Operation.PACK
+            if ctx.operation is Operation.PACK
             else reversed(self.interceptors)
         )
 

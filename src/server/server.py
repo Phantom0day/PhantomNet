@@ -6,8 +6,9 @@ import threading
 from typing import Dict, List
 from src.core import *
 from src.interceptors import *
-from src.utils import *
+from src.session import *
 from src.transport.udp import UdpRelayServer
+from src.utils import *
 
 
 class RemoteServer(BaseProxy):
@@ -149,7 +150,7 @@ class RemoteServer(BaseProxy):
                 packAndSend(client, self.chain, ctx, b"\x00")
 
                 # Start proxying data
-                self._proxy_data(dest_sock, client, addr)
+                Session(client, dest_sock, self.chain).loop()
 
             except Exception as e:
                 log.error(f"Error on destination {dest_addr}:{dest_port}: {e}")

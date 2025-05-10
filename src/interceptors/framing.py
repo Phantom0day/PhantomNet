@@ -4,13 +4,13 @@ from src.interceptors.core import BaseInterceptor
 
 class LengthPrefixFramer(BaseInterceptor):
     def pack(self, ctx):
-        if ctx.req_data:
-            payload = ctx.req_data
-            ctx.req_data = struct.pack("!H", len(payload)) + payload
+        if ctx.data:
+            payload = ctx.data
+            ctx.data = struct.pack("!H", len(payload)) + payload
         return ctx
 
     def unpack(self, ctx):
-        cache = ctx.meta.get("lp_cache", b"") + ctx.resp_data
+        cache = ctx.meta.get("lp_cache", b"") + ctx.data
         frame, length = b"", 0
 
         if len(cache) >= 2:
@@ -20,5 +20,5 @@ class LengthPrefixFramer(BaseInterceptor):
                 ctx.meta["lp_cache"] = cache[length + 2 :]
             else:
                 ctx.meta["lp_cache"] = cache
-        ctx.resp_data = frame
+        ctx.data = frame
         return ctx

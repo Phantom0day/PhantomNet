@@ -58,9 +58,6 @@ profiles:
         options:
           key: "your-secure-key-here"
     
-      - name: HTTPCamouflageInterceptor
-        enabled: true
-    
       - name: EntropyAdjustmentInterceptor
         enabled: true
     
@@ -75,9 +72,7 @@ Profiles are collections of interceptors with specific configurations. PhantomSo
 
 1. **default** - Basic functionality with minimal interceptors
 2. **stealth** - Maximum censorship evasion with multiple layers of obfuscation
-3. **http_camouflage** - Disguises traffic as HTTP
-4. **tls_camouflage** - Disguises traffic as TLS/HTTPS
-5. **high_speed** - Optimized for speed with minimal obfuscation
+3. **high_speed** - Optimized for speed with minimal obfuscation
 
 You can select a profile using the `--profile` command-line option or by setting the `active_profile` in the configuration file.
 
@@ -164,9 +159,6 @@ profiles:
         enabled: true
         options:
           key: "my-custom-key"
-    
-      - name: HTTPCamouflageInterceptor
-        enabled: true
     
       # Add more interceptors as needed
 ```

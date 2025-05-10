@@ -13,16 +13,15 @@ log = logging.getLogger(__name__)
 def recv_frame(sock: socket.socket, chain: InterceptorChain, ctx) -> Optional[bytes]:
     while True:
         try:
-            data = sock.recv(DEFAULT_BUFFER_SIZE)
-            if not data:
+            ctx.data = sock.recv(DEFAULT_BUFFER_SIZE)
+            if not ctx.data:
                 return None
 
-            ctx.resp_data = data
             ctx = chain.run(ctx)
             if ctx.drop:
                 return None
-            if ctx.resp_data:
-                frame, ctx.resp_data = ctx.resp_data, b""
+            if ctx.data:
+                frame, ctx.data = ctx.data, b""
                 return frame
         except socket.error as e:
             if e.errno in (errno.EAGAIN, errno.EWOULDBLOCK):

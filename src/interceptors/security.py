@@ -18,16 +18,16 @@ class AESEncryptionInterceptor(BaseInterceptor):
             self.key = key[:32].ljust(32, b"\0")
 
     def pack(self, ctx):
-        data = ctx.req_data
+        data = ctx.data
         if data:
-            ctx.req_data = self._encrypt(data)
+            ctx.data = self._encrypt(data)
         return ctx
 
     def unpack(self, ctx):
-        data = ctx.resp_data
+        data = ctx.data
         if data and self._is_encrypted(data):
             try:
-                ctx.resp_data = self._decrypt(data)
+                ctx.data = self._decrypt(data)
             except Exception as e:
                 # Log error but continue with original data
                 pass
@@ -50,54 +50,6 @@ class AESEncryptionInterceptor(BaseInterceptor):
         return unpad(cipher.decrypt(encrypted), AES.block_size)
 
 
-class SecureHandshakeInterceptor(BaseInterceptor):
-    """Implements secure authentication handshake"""
-
-    def __init__(self, shared_secret, time_window=30):
-        self.secret = (
-            shared_secret.encode() if isinstance(shared_secret, str) else shared_secret
-        )
-        self.window = time_window
-
-    def unpack(self, ctx):
-        data = ctx.resp_data
-        try:
-            # Validate minimum length
-            if len(data) < 8:
-                ctx.drop = True
-                return ctx
-
-            # Extract timestamp (first 4 bytes)
-            ts_bytes = data[:4]
-            timestamp = struct.unpack("!I", ts_bytes)[0]
-            current = int(time.time())
-
-            # Validate timestamp is within time window
-            if abs(current - timestamp) > self.window:
-                ctx.drop = True
-                return ctx
-
-            # Verify HMAC
-            provided_hmac = data[4:8]
-            expected_hmac = self._calculate_hmac(ts_bytes)
-
-            if not hmac.compare_digest(provided_hmac, expected_hmac):
-                ctx.drop = True
-                return ctx
-
-            # Extract real payload
-            ctx.resp_data = data[8:]
-
-        except Exception:
-            ctx.drop = True
-
-        return ctx
-
-    def _calculate_hmac(self, data):
-        h = hmac.new(self.secret, data, "sha256")
-        return h.digest()[:4]  # Use first 4 bytes of HMAC
-
-
 class PacketSizeNormalizer(BaseInterceptor):
     """Normalizes packet sizes to prevent traffic analysis"""
 
@@ -105,7 +57,7 @@ class PacketSizeNormalizer(BaseInterceptor):
         self.sizes = target_sizes
 
     def pack(self, ctx):
-        data = ctx.req_data
+        data = ctx.data
         if not data:
             return ctx
 
@@ -117,7 +69,7 @@ class PacketSizeNormalizer(BaseInterceptor):
         if data_len <= target:
             # Pad to target size
             padding = os.urandom(target - data_len)
-            ctx.req_data = data + padding
+            ctx.data = data + padding
         else:
             # Split into multiple chunks of target size
             chunks = []
@@ -127,6 +79,6 @@ class PacketSizeNormalizer(BaseInterceptor):
                     chunk += os.urandom(self.sizes[-1] - len(chunk))
                 chunks.append(chunk)
 
-            ctx.req_data = b"".join(chunks)
+            ctx.data = b"".join(chunks)
 
         return ctx

@@ -40,6 +40,6 @@ AUTH_NO_ACCEPTABLE_METHODS = 255
 
 # Buffer sizes
 DEFAULT_BUFFER_SIZE = 4096
-
+MAX_BUFFER_SIZE = 10 * 1024 * 1024
 # Logging
 DEFAULT_LOGGING_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"

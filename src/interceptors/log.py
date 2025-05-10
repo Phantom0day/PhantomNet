@@ -13,16 +13,14 @@ class PacketLogger(BaseInterceptor):
 
     def pack(self, ctx):
         if self.log_enable:
-            data = ctx.req_data[:64].hex() if ctx.req_data else ""
-            log.log(self.log_level, f"PACK>>{len(data)}")
-            log.log(self.log_level, f"    REQ>>{data}")
+            data = ctx.data[:64].hex() if ctx.data else ""
+            log.log(self.log_level, f"PACK>>{len(data)} REQ>>{data}")
         return ctx
 
     def unpack(self, ctx):
         if self.log_enable:
-            data = ctx.resp_data[:64].hex() if ctx.resp_data else ""
-            log.log(self.log_level, f"after UNPK<<{len(data)}")
-            log.log(self.log_level, f"    RESP>>{data}")
+            data = ctx.data[:64].hex() if ctx.data else ""
+            log.log(self.log_level, f"after UNPK>>{len(data)} RES>>{data}")
         return ctx
 
 
@@ -35,14 +33,12 @@ class PacketLogger2(BaseInterceptor):
 
     def pack(self, ctx):
         if self.log_enable:
-            data = ctx.req_data[:64].hex() if ctx.req_data else ""
-            log.log(self.log_level, f"after PACK>>{len(data)}")
-            log.log(self.log_level, f"    REQ>>{data}")
+            data = ctx.data[:64].hex() if ctx.data else ""
+            log.log(self.log_level, f"after PACK>>{len(data)} REQ>>{data}")
         return ctx
 
     def unpack(self, ctx):
         if self.log_enable:
-            data = ctx.resp_data[:64].hex() if ctx.resp_data else ""
-            log.log(self.log_level, f"UNPK<<{len(data)}")
-            log.log(self.log_level, f"    RESP>>{data}")
+            data = ctx.data[:64].hex() if ctx.data else ""
+            log.log(self.log_level, f"UNPK<<{len(data)} RES>>{data}")
         return ctx
