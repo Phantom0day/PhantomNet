@@ -12,8 +12,9 @@ class TcpListener:
 
     def serve_forever(self):
         self._sock.bind(self.bind)
-        self._sock.listen()
+        self._sock.listen(5)
         self._running = True
+        self._sock.settimeout(1)
         log.info(f"Listening on {self.bind[0]}:{self.bind[1]}")
         while self._running:
             try:
@@ -24,6 +25,8 @@ class TcpListener:
                     daemon=True,
                 )
                 t.start()
+            except socket.timeout:
+                continue
             except OSError:
                 break
 

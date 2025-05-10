@@ -20,61 +20,14 @@ class RemoteServer(BaseProxy):
         port: int,
         interceptors: List[BaseInterceptor] = None,
     ):
-        super().__init__(interceptors, True)
+        super().__init__(host, port, interceptors)
         self.host = host
         self.port = port
         # Maps TCP socket to UDP relay
         self.udp_relays: Dict[socket.socket, UdpRelayServer] = {}
 
-    def start(self):
-        """Start the server"""
-        self.running = True
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-        try:
-            sock.bind((self.host, self.port))
-            sock.listen(5)
-            log.info(f"Server started on {self.host}:{self.port}")
-
-            while self.running:
-                try:
-                    sock.settimeout(1.0)
-                    try:
-                        client, addr = sock.accept()
-                        log.info(f"New connection from {addr[0]}:{addr[1]}")
-                        thread = threading.Thread(
-                            target=self._handle_client,
-                            args=(client, addr),
-                            daemon=True,
-                        )
-                        thread.start()
-                    except socket.timeout:
-                        continue
-                    except Exception as e:
-                        if self.running:
-                            log.error(f"Accept error: {e}")
-                except KeyboardInterrupt:
-                    break
-
-        except Exception as e:
-            log.error(f"Server error: {e}")
-        finally:
-            self.running = False
-            sock.close()
-
-            for relay in self.udp_relays.values():
-                relay.stop()
-            for client in self.clients.copy():
-                close_socket(client)
-
-            log.debug("Remote server shutdown complete")
-
     def stop(self):
-        """Stop the remote server"""
-        log.info("Stopping remote server...")
-        self.running = False
-
+        super().stop()
         # Stop all UDP relays
         for relay in self.udp_relays.values():
             relay.stop()

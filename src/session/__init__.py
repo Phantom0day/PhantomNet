@@ -1,1 +1,1 @@
-from src.session.core import *
+from src.session.session import *

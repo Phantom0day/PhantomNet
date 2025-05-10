@@ -40,5 +40,5 @@ class PacketLogger2(BaseInterceptor):
     def unpack(self, ctx):
         if self.log_enable:
             data = ctx.data[:64].hex() if ctx.data else ""
-            log.log(self.log_level, f"UNPK<<{len(data)} RES>>{data}")
+            log.log(self.log_level, f"UNPK>>{len(data)} RES>>{data}")
         return ctx

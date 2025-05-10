@@ -7,6 +7,7 @@ import threading
 from typing import Dict, Optional, List
 from src.core import *
 from src.interceptors import *
+from src.listener import *
 from src.session import *
 from src.transport.udp import UdpRelayClient
 from src.utils import *
@@ -23,64 +24,15 @@ class LocalClientProxy(BaseProxy):
         server_port: int,
         interceptors: List[BaseInterceptor] = None,
     ):
-        super().__init__(interceptors)
-        self.local_host = local_host
-        self.local_port = local_port
+        super().__init__(local_host, local_port, interceptors)
         self.server_host = server_host
         self.server_port = server_port
         self.udp_relays: Dict[socket.socket, UdpRelayClient] = (
             {}
         )  # Maps TCP socket to UDP relay
 
-    def start(self):
-        """Start the local proxy server"""
-        self.running = True
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-        try:
-            sock.bind((self.local_host, self.local_port))
-            sock.listen(5)
-            log.info(f"Local proxy started on {self.local_host}:{self.local_port}")
-            log.info(f"Forwarding to {self.server_host}:{self.server_port}")
-
-            while self.running:
-                try:
-                    sock.settimeout(1.0)
-                    try:
-                        client, addr = sock.accept()
-                        log.info(f"New connection from {addr[0]}:{addr[1]}")
-                        thread = threading.Thread(
-                            target=self._handle_client,
-                            args=(client, addr),
-                        )
-                        thread.daemon = True
-                        thread.start()
-                    except socket.timeout:
-                        continue
-                    except Exception as e:
-                        if self.running:
-                            log.error(f"Accept error: {e}")
-                except KeyboardInterrupt:
-                    break
-
-        except Exception as e:
-            log.error(f"Local proxy error: {e}")
-        finally:
-            self.running = False
-            sock.close()
-
-            for relay in self.udp_relays.values():
-                relay.stop()
-            for client in self.clients.copy():
-                close_socket(client)
-
     def stop(self):
-        """Stop the local proxy server"""
-        log.info("Stopping local proxy...")
-        self.running = False
-
-        # Stop all UDP relays
+        super().stop()
         for relay in self.udp_relays.values():
             relay.stop()
 
@@ -125,15 +77,6 @@ class LocalClientProxy(BaseProxy):
         except Exception as e:
             log.error(f"Client error {addr[0]}:{addr[1]}: {e}")
         finally:
-            if client in self.clients:
-                self.clients.remove(client)
-
-            # Remove TCP->UDP mapping
-            if client in self.udp_relays:
-                udp_relay = self.udp_relays.pop(client)
-                udp_relay.stop()
-
-            close_socket(client)
             if remote:
                 close_socket(remote)
 
