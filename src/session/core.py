@@ -18,19 +18,37 @@ class Session:
         self.running = True
 
     def loop(self):
-        self.in_sock.setblocking(False)
-        self.out_sock.setblocking(False)
-        ctx = ProtocolContext(stage="transport")
-        while self.running:
-            r, _, e = select.select([self.in_sock, self.out_sock], [], [], 1.0)
-            for s in r:
-                if s is self.out_sock:  # outbound → inbound
-                    ctx.operation = Operation.PACK
-                    self._pump(self.out_sock, self.in_sock, ctx)
-                else:
-                    ctx.operation = Operation.UNPACK
-                    self._pump(self.in_sock, self.out_sock, ctx)
-        pass
+        try:
+            self.in_sock.setblocking(False)
+            self.out_sock.setblocking(False)
+            rlist = [self.in_sock, self.out_sock]
+            stage = "transport"
+            while self.running:
+                try:
+                    r, _, e = select.select(rlist, [], rlist, 1.0)
+                except (select.error, socket.error) as e:
+                    log.error(f"Select error: {e}")
+                    break
+                if self.in_sock in e or self.out_sock in e:
+                    log.debug(f"Socket error: {e}")
+                    break
+
+                for s in r:
+                    if s is self.out_sock:  # outbound → inbound
+                        self._pump(
+                            self.out_sock,
+                            self.in_sock,
+                            ProtocolContext(stage=stage, operation=Operation.PACK),
+                        )
+                    else:
+                        self._pump(
+                            self.in_sock,
+                            self.out_sock,
+                            ProtocolContext(stage=stage, operation=Operation.UNPACK),
+                        )
+        finally:
+            close_socket(self.in_sock)
+            close_socket(self.out_sock)
 
     def _pump(self, src: socket.socket, dst: socket.socket, ctx: ProtocolContext):
         ctx.data = src.recv(DEFAULT_BUFFER_SIZE)
@@ -38,7 +56,7 @@ class Session:
             self.running = False
             return
         self.chain.run(ctx)
-        self._buffer_and_flush(ctx)
+        # self._buffer_and_flush(ctx)
         if ctx.drop:
             self.running = False
             return
