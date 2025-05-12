@@ -30,7 +30,9 @@ class BaseProxy(ABC):
 
     def start(self):
         transport_adapter = self._get_adapter()
-        handler = self._get_handler(transport_adapter)
+        handshake_protocol = self._get_handshake_protocol()
+        handler = self._get_handler(transport_adapter, handshake_protocol)
+
         listener = TcpListener(
             self.addr,
             handler=lambda c, p: Session(
@@ -43,12 +45,22 @@ class BaseProxy(ABC):
         listener.serve_forever()
 
     @abstractmethod
-    def _get_handler(self, adapter: TransportAdapter) -> Handler:
+    def _get_handler(
+        self, adapter: TransportAdapter, handshake: HandshakeProtocol
+    ) -> Handler:
         raise NotImplementedError("Subclasses must implement this method")
 
     @abstractmethod
     def _get_adapter(self) -> TransportAdapter:
         raise NotImplementedError("Subclasses must implement this method")
+
+    def _get_handshake_protocol(self) -> HandshakeProtocol:
+        handshake_type = self.config.get("handshake", "type", "socks5")
+        base_protocol = Socks5HandshakeProtocol()
+        # if self.config.get('handshake', 'obfuscate', False):
+        #     magic = self.config.get('handshake', 'magic', b'\xB0\xAE\x54')
+        #     return ObfuscatedHandshakeProtocol(base_protocol, magic)
+        return base_protocol
 
     def stop(self):
         """Stop the proxy"""
@@ -73,8 +85,8 @@ class ClientProxy(BaseProxy):
         super().__init__(config, local_host, local_port, interceptors)
         self.server_addr = (server_host, server_port)
 
-    def _get_handler(self, adapter):
-        return Socks5ClientHandler(self.addr, self.server_addr, adapter)
+    def _get_handler(self, adapter, handshake):
+        return Socks5ClientHandler(self.addr, self.server_addr, adapter, handshake)
 
     def _get_adapter(self):
         c = self.config.get("transport", default={})
@@ -82,7 +94,7 @@ class ClientProxy(BaseProxy):
         if t == "tls":
             return TlsClientAdapter(
                 c.get("sni", "google.com"),
-                cafile=c.get("cert", None),
+                cert=c.get("cert", None),
             )
         return PlainTCPAdapter()
 
@@ -90,8 +102,8 @@ class ClientProxy(BaseProxy):
 class ServerProxy(BaseProxy):
     """Server that accepts connections from client proxies"""
 
-    def _get_handler(self, adapter):
-        return Socks5ServerHandler(self.addr, adapter)
+    def _get_handler(self, adapter, handshake):
+        return Socks5ServerHandler(self.addr, adapter, handshake)
 
     def _get_adapter(self):
         c = self.config.get("transport", default={})

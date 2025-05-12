@@ -27,7 +27,7 @@ class TcpListener:
         while self._running:
             try:
                 conn, peer = self._sock.accept()
-                wrapped_conn = self.adapter.wrap_accepted_socket(conn)
+                wrapped_conn = self.adapter.wrap_inbound(conn)
                 if wrapped_conn is None:
                     log.error(f"Failed to establish secure connection with {peer}")
                     close_socket(conn)

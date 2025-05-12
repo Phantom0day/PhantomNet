@@ -33,9 +33,14 @@ class ConfigLoader:
                 "log_file": None,
                 "verbose": False,
             },
+            "handshake": {
+                "type": "socks5",
+                "obfuscate": False,
+                "magic": b"\xb0\xae\x54",
+            },
             "transport": {
-                "type": "plain",
-                "sni": "google.com",
+                "type": "tls",
+                "sni": "www.sydney.edu.au",
                 "cert": "cert.pem",
                 "key": "key.pem",
             },
