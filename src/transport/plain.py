@@ -2,7 +2,7 @@ from .base import *
 
 
 class PlainTCPAdapter(TransportAdapter):
-    def create_connection(self, address, timeout=None):
+    def create_outbound(self, address, timeout=None):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         if timeout:
             sock.settimeout(timeout)

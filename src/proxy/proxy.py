@@ -3,7 +3,7 @@ from typing import Optional, Tuple, List
 
 from src.config import *
 from src.core.chain import InterceptorChain
-from src.handler import *
+from src.handshake import *
 from src.interceptors import *
 from src.listener import *
 from src.session import *
@@ -54,13 +54,8 @@ class BaseProxy(ABC):
     def _get_adapter(self) -> TransportAdapter:
         raise NotImplementedError("Subclasses must implement this method")
 
-    def _get_handshake_protocol(self) -> HandshakeProtocol:
-        handshake_type = self.config.get("handshake", "type", "socks5")
-        base_protocol = Socks5HandshakeProtocol()
-        # if self.config.get('handshake', 'obfuscate', False):
-        #     magic = self.config.get('handshake', 'magic', b'\xB0\xAE\x54')
-        #     return ObfuscatedHandshakeProtocol(base_protocol, magic)
-        return base_protocol
+    @abstractmethod
+    def _get_handshake_protocol(self) -> HandshakeProtocol: ...
 
     def stop(self):
         """Stop the proxy"""
@@ -86,7 +81,7 @@ class ClientProxy(BaseProxy):
         self.server_addr = (server_host, server_port)
 
     def _get_handler(self, adapter, handshake):
-        return Socks5ClientHandler(self.addr, self.server_addr, adapter, handshake)
+        return Socks5ClientHandler(self.addr, self.server_addr, handshake, adapter)
 
     def _get_adapter(self):
         c = self.config.get("transport", default={})
@@ -98,12 +93,22 @@ class ClientProxy(BaseProxy):
             )
         return PlainTCPAdapter()
 
+    def _get_handshake_protocol(self):
+        handshake_type = self.config.get("handshake", "type", "socks5")
+        if handshake_type != "socks5":
+            log.debug(f"unsupported handshake protocol: {handshake_type}")
+        handshake_protocol = Socks5ClientHandshakeProtocol()
+        # if self.config.get('handshake', 'obfuscate', False):
+        #     magic = self.config.get('handshake', 'magic', b'\xB0\xAE\x54')
+        #     return ObfuscatedHandshakeProtocol(base_protocol, magic)
+        return handshake_protocol
+
 
 class ServerProxy(BaseProxy):
     """Server that accepts connections from client proxies"""
 
     def _get_handler(self, adapter, handshake):
-        return Socks5ServerHandler(self.addr, adapter, handshake)
+        return Socks5ServerHandler(self.addr, handshake, adapter)
 
     def _get_adapter(self):
         c = self.config.get("transport", default={})
@@ -111,3 +116,13 @@ class ServerProxy(BaseProxy):
         if t == "tls":
             return TlsServerAdapter(c["cert"], c["key"])
         return PlainTCPAdapter()
+
+    def _get_handshake_protocol(self):
+        handshake_type = self.config.get("handshake", "type", "socks5")
+        if handshake_type != "socks5":
+            log.debug(f"unsupported handshake protocol: {handshake_type}")
+        handshake_protocol = Socks5ServerHandshakeProtocol()
+        # if self.config.get('handshake', 'obfuscate', False):
+        #     magic = self.config.get('handshake', 'magic', b'\xB0\xAE\x54')
+        #     return ObfuscatedHandshakeProtocol(base_protocol, magic)
+        return handshake_protocol

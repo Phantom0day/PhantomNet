@@ -1,4 +1,5 @@
 import socket
+import ssl
 import struct
 from typing import Tuple, Dict, Any, Optional
 
@@ -7,11 +8,8 @@ from src.utils import *
 from src.core.errors import *
 
 
-class Socks5HandshakeProtocol(HandshakeProtocol):
-    def __init__(self, timeout=5):
-        self.timeout = timeout
-
-    def client_handshake(self, cli):
+class Socks5ClientHandshakeProtocol(HandshakeProtocol):
+    def client_handshake(self, cli: socket.socket):
         try:
             ver, n_methods = recv_exact(cli, 2)
             if ver != SOCKS_VERSION:
@@ -41,12 +39,40 @@ class Socks5HandshakeProtocol(HandshakeProtocol):
                 cli.sendall(create_socks_reply(REPLY_ADDRESS_TYPE_NOT_SUPPORTED))
                 raise SocksError(f"Unsupported ATYP: {atyp}")
             port = struct.unpack("!H", recv_exact(cli, 2))[0]
-            return True, {"address": (addr, port), "command": cmd}
-        except Exception as e:
+            return addr, port
+        except SocksError:
             log.error(f"Client socks5 error: {e}")
-            return False, {"error": str(e)}
+            return None
+        except Exception as e:
+            cli.sendall(create_socks_reply(REPLY_GENERAL_FAILURE))
+            log.error(f"Client error: {e}")
+            return None
 
-    def server_handshake(self, cli):
+    def server_handshake(self, remote, dest_addr):
+        if not dest_addr:
+            return False
+        try:
+            addr_bytes = pack_address(dest_addr, ATYP_DOMAIN)
+            remote.sendall(addr_bytes)
+
+            resp = recv_exact(remote, 1)
+            if not resp:
+                raise SocksError("No response from remote server")
+            if resp == b"\x00":
+                return True
+            else:
+                log.debug(f"Remote server connection failed: {resp.hex()}")
+            return False
+        except ssl.SSLError as e:
+            log.error(f"TLS handshake failed: {e}")
+            return False
+        except Exception as e:
+            log.error(f"TCP CONNECT error: {e}")
+            return False
+
+
+class Socks5ServerHandshakeProtocol(HandshakeProtocol):
+    def client_handshake(self, cli: socket.socket):
         try:
             if hasattr(cli, "cipher"):
                 log.debug(f"TLS connection: {cli.cipher()}")
@@ -64,11 +90,16 @@ class Socks5HandshakeProtocol(HandshakeProtocol):
                 dest_addr = socket.inet_ntop(socket.AF_INET6, addr_data)
             else:
                 log.debug(f"Unsupported address type: {addr_type}")
-                return False, {"error": f"Unsupported address type: {addr_type}"}
+                cli.sendall(b"\x01")
+                return None
 
             port_data = recv_exact(cli, 2)
             dest_port = struct.unpack("!H", port_data)[0]
-            return True, {"address": (dest_addr, dest_port)}
+            return dest_addr, dest_port
         except Exception as e:
             log.error(f"SOCKS5 server handshake error: {e}")
-            return False, {"error": str(e)}
+            cli.sendall(b"\x01")
+            return None
+
+    def server_handshake(self, remote, dest_addr):
+        return True

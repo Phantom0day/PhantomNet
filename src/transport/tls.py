@@ -33,7 +33,7 @@ class TlsClientAdapter(TlsAdapter):
         if not verify:
             self._ctx.verify_mode = ssl.CERT_NONE
 
-    def create_connection(self, address, timeout=None):
+    def create_outbound(self, address, timeout=None):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         if timeout:
             sock.settimeout(timeout)
@@ -49,7 +49,7 @@ class TlsServerAdapter(TlsAdapter):
         self._ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         self._ctx.load_cert_chain(certfile=cert, keyfile=key)
 
-    def create_connection(self, address, timeout=None):
+    def create_outbound(self, address, timeout=None):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         if timeout:
             sock.settimeout(timeout)

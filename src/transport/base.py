@@ -5,7 +5,7 @@ from typing import Tuple
 
 class TransportAdapter(ABC):
     @abstractmethod
-    def create_connection(
+    def create_outbound(
         self,
         address: Tuple[str, int],
         timeout: float = None,
