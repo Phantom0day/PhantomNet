@@ -1,7 +1,7 @@
 import logging
 from src.utils import *
 
-from src.interceptors.core import BaseInterceptor
+from .core import BaseInterceptor
 
 
 class PacketLogger(BaseInterceptor):

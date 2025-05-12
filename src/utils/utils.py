@@ -3,7 +3,7 @@ import socket
 import struct
 import logging
 from typing import Optional, Tuple, BinaryIO
-from src.utils.constants import *
+from .constants import *
 from src.core.operation import Operation
 from src.core.chain import InterceptorChain
 

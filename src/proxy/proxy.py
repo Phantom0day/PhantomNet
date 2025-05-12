@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Tuple, List
 
+from src.config import *
 from src.core.chain import InterceptorChain
 from src.handler import *
 from src.interceptors import *
@@ -15,10 +16,12 @@ class BaseProxy(ABC):
 
     def __init__(
         self,
+        config: ConfigLoader,
         host: str,
         port: int,
         interceptors: Optional[List] = None,
     ):
+        self.config = config
         self.addr = (host, port)
         self.interceptors = interceptors or []
         self.running = False
@@ -26,20 +29,25 @@ class BaseProxy(ABC):
         self.chain = InterceptorChain(self.interceptors)
 
     def start(self):
-        handler = self.getHandler()
+        transport_adapter = self._get_adapter()
+        handler = self._get_handler(transport_adapter)
         listener = TcpListener(
             self.addr,
             handler=lambda c, p: Session(
                 *handler.handle(c, p),
                 self.chain,
-                PlainTCPAdapter(),
             ).loop(),
+            adapter=transport_adapter,
         )
         self._listener = listener
         listener.serve_forever()
 
     @abstractmethod
-    def getHandler(self) -> Handler:
+    def _get_handler(self, adapter: TransportAdapter) -> Handler:
+        raise NotImplementedError("Subclasses must implement this method")
+
+    @abstractmethod
+    def _get_adapter(self) -> TransportAdapter:
         raise NotImplementedError("Subclasses must implement this method")
 
     def stop(self):
@@ -50,26 +58,41 @@ class BaseProxy(ABC):
             close_socket(sock)
 
 
-class ServerProxy(BaseProxy):
-    """Server that accepts connections from client proxies"""
-
-    def getHandler(self):
-        return Socks5ServerHandler(self.addr)
-
-
 class ClientProxy(BaseProxy):
     """SOCKS5 proxy that runs on the client side"""
 
     def __init__(
         self,
+        config: ConfigLoader,
         local_host: str,
         local_port: int,
         server_host: str,
         server_port: int,
         interceptors: List[BaseInterceptor] = None,
     ):
-        super().__init__(local_host, local_port, interceptors)
+        super().__init__(config, local_host, local_port, interceptors)
         self.server_addr = (server_host, server_port)
 
-    def getHandler(self):
-        return Socks5ClientHandler(self.addr, self.server_addr)
+    def _get_handler(self, adapter):
+        return Socks5ClientHandler(self.addr, self.server_addr, adapter)
+
+    def _get_adapter(self):
+        c = self.config.get("transport", default={})
+        t = c.get("type", "plain")
+        if t == "tls":
+            return TlsClientAdapter(c.get("sni", "google.com"), cafile=c["cert"])
+        return PlainTCPAdapter()
+
+
+class ServerProxy(BaseProxy):
+    """Server that accepts connections from client proxies"""
+
+    def _get_handler(self, adapter):
+        return Socks5ServerHandler(self.addr, adapter)
+
+    def _get_adapter(self):
+        c = self.config.get("transport", default={})
+        t = c.get("type", "plain")
+        if t == "tls":
+            return TlsServerAdapter(c["cert"], c["key"])
+        return PlainTCPAdapter()

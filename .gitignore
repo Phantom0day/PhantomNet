@@ -33,4 +33,6 @@ data/
 src.txt
 config.json
 config.yaml
-config.ini
+
+# ssl
+*.pem

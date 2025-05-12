@@ -1,9 +1,4 @@
-import struct
-import random
-import time
-import os
-from src.core import ProtocolContext
-from src.interceptors.core import BaseInterceptor
+from .core import BaseInterceptor
 from Crypto.Util.strxor import strxor
 
 

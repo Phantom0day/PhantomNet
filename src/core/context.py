@@ -1,7 +1,7 @@
 import socket
 from dataclasses import dataclass, field
 from typing import Any, Optional, Dict
-from src.core.operation import Operation
+from .operation import Operation
 
 
 @dataclass
