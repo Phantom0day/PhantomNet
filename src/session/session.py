@@ -1,4 +1,5 @@
 import select
+import ssl
 from src.core.context import *
 from src.utils import *
 
@@ -24,8 +25,10 @@ class Session:
 
     def loop(self):
         try:
-            self.in_sock.setblocking(False)
-            self.out_sock.setblocking(False)
+            if not isinstance(self.in_sock, ssl.SSLSocket):
+                self.in_sock.setblocking(False)
+            if not isinstance(self.out_sock, ssl.SSLSocket):
+                self.out_sock.setblocking(False)
             rlist = [self.in_sock, self.out_sock]
             stage = "transport"
             while self.running:
