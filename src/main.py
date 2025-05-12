@@ -64,7 +64,7 @@ def run_server(config: ConfigLoader, logger):
     interceptors = config.create_interceptors()
 
     # Create and start server
-    server = ServerProxy(host, port, interceptors)
+    server = ServerProxy(config, host, port, interceptors)
     logger.info(f"Starting remote server on {host}:{port}")
     logger.info(f"Using profile: {config.get_active_profile()}")
     logger.info(
@@ -100,7 +100,12 @@ def run_local_proxy(config, logger):
 
     # Create and start the local proxy
     local_proxy = ClientProxy(
-        local_host, local_port, server_host, server_port, interceptors
+        config,
+        local_host,
+        local_port,
+        server_host,
+        server_port,
+        interceptors,
     )
 
     logger.info(f"Starting local proxy on {local_host}:{local_port}")

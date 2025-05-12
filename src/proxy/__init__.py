@@ -1,1 +1,1 @@
-from src.proxy.proxy import *
+from .proxy import *

@@ -1,5 +1,5 @@
 import struct
-from src.interceptors.core import BaseInterceptor
+from .core import BaseInterceptor
 
 
 class LengthPrefixFramer(BaseInterceptor):

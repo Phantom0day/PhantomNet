@@ -33,6 +33,12 @@ class ConfigLoader:
                 "log_file": None,
                 "verbose": False,
             },
+            "transport": {
+                "type": "plain",
+                "sni": "google.com",
+                "cert": "cert.pem",
+                "key": "key.pem",
+            },
             "profiles": {"default": {"interceptors": []}},
             "active_profile": "default",
         }

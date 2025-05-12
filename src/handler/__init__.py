@@ -1,1 +1,1 @@
-from src.handler.handler import *
+from .handler import *

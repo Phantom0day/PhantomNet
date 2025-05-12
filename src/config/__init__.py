@@ -1,1 +1,1 @@
-from src.config.loader import ConfigLoader, config
+from .loader import *

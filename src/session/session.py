@@ -1,7 +1,6 @@
 import select
 from src.core.context import *
 from src.utils import *
-from src.transport import *
 
 
 class Session:
@@ -10,11 +9,14 @@ class Session:
         inbound: socket.socket,
         outbound: socket.socket,
         chain: InterceptorChain,
-        adapter: TransportAdapter,
         max_buf=MAX_BUFFER_SIZE,
     ):
-        self.in_sock = adapter.wrap_inbound(inbound)
-        self.out_sock = adapter.wrap_outbound(outbound)
+        if inbound is None or outbound is None:
+            log.error("Session initialized with None socket")
+            self.running = False
+            return
+        self.in_sock = inbound
+        self.out_sock = outbound
         self.chain = chain
         self.max_buf = max_buf
         self.buf_cli, self.buf_rem = b"", b""

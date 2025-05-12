@@ -1,5 +1,5 @@
 from typing import List
-from src.core.context import ProtocolContext, Operation
+from .context import ProtocolContext, Operation
 
 
 class InterceptorChain:

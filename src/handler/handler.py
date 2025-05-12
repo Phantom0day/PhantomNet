@@ -3,11 +3,13 @@ import socket
 from typing import Tuple
 from src.core.errors import *
 from src.utils import *
+from src.transport import *
 
 
 class Handler(ABC):
-    def __init__(self, addr: Tuple[str, int], timeout=5):
+    def __init__(self, addr: Tuple[str, int], transport_adapter=None, timeout=5):
         self.addr = addr
+        self.transport_adapter = transport_adapter or PlainTCPAdapter()
         self.timeout = timeout
 
     @abstractmethod
@@ -17,14 +19,13 @@ class Handler(ABC):
 
 
 class Socks5ClientHandler(Handler):
-    def __init__(self, addr, server_addr, timeout=5):
-        super().__init__(addr, timeout)
+    def __init__(self, addr, server_addr, transport_adapter, timeout=5):
+        super().__init__(addr, transport_adapter, timeout)
         self.server_addr = server_addr
 
     def handle(self, conn, peer):
         try:
             dest_addr = self._socks5_request(conn)
-            # remote = socket.create_connection(self.addr, self.timeout)
             remote = self._connect_to_server(dest_addr)
             if not remote:
                 log.error(f"Server connection failed for {peer[0]}:{peer[1]}")
@@ -75,9 +76,9 @@ class Socks5ClientHandler(Handler):
         if not dest_addr:
             return None
         try:
-            remote = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            remote.settimeout(self.timeout)
-            remote.connect(self.server_addr)
+            remote = self.transport_adapter.create_connection(
+                self.server_addr, self.timeout
+            )
 
             addr_bytes = pack_address(dest_addr, ATYP_DOMAIN)
             remote.sendall(addr_bytes)
@@ -106,6 +107,9 @@ class Socks5ServerHandler(Handler):
 
     def _socks5_request(self, cli: socket.socket):
         try:
+            if hasattr(cli, "cipher"):
+                log.debug(f"TLS connection: {cli.cipher()}")
+
             addr_type = struct.unpack("!B", recv_exact(cli, 1))[0]
             if addr_type == ATYP_IPV4:
                 addr_data = recv_exact(cli, 4)
