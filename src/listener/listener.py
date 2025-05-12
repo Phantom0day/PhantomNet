@@ -1,6 +1,6 @@
 import socket, threading, logging, select
 from src.utils import *
-from src.handler import *
+from src.handshake import *
 from src.transport import *
 
 
@@ -27,7 +27,7 @@ class TcpListener:
         while self._running:
             try:
                 conn, peer = self._sock.accept()
-                wrapped_conn = self.adapter.wrap_accepted_socket(conn)
+                wrapped_conn = self.adapter.wrap_inbound(conn)
                 if wrapped_conn is None:
                     log.error(f"Failed to establish secure connection with {peer}")
                     close_socket(conn)

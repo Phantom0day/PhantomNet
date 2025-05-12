@@ -1,45 +1,16 @@
-from abc import ABC, abstractmethod
 import socket
-from typing import Tuple
-from src.core.errors import *
+import ssl
+import struct
+from typing import Tuple, Dict, Any, Optional
+
+from .base import *
 from src.utils import *
-from src.transport import *
+from src.core.errors import *
 
 
-class Handler(ABC):
-    def __init__(self, addr: Tuple[str, int], transport_adapter=None, timeout=5):
-        self.addr = addr
-        self.transport_adapter = transport_adapter or PlainTCPAdapter()
-        self.timeout = timeout
-
-    @abstractmethod
-    def handle(
-        self, conn: socket.socket, peer
-    ) -> Tuple[socket.socket, socket.socket]: ...
-
-
-class Socks5ClientHandler(Handler):
-    def __init__(self, addr, server_addr, transport_adapter, timeout=5):
-        super().__init__(addr, transport_adapter, timeout)
-        self.server_addr = server_addr
-
-    def handle(self, conn, peer):
+class Socks5ClientHandshakeProtocol(HandshakeProtocol):
+    def client_handshake(self, cli: socket.socket):
         try:
-            dest_addr = self._socks5_request(conn)
-            remote = self._connect_to_server(dest_addr)
-            if not remote:
-                log.error(f"Server connection failed for {peer[0]}:{peer[1]}")
-                conn.sendall(create_socks_reply(REPLY_HOST_UNREACHABLE))
-                return None, None
-            conn.sendall(b"\x05\x00\x00\x01" + b"\x00" * 6)
-            return remote, conn
-        except Exception as e:
-            log.error(f"Client error {peer[0]}:{peer[1]}: {e}")
-            return None, None
-
-    def _socks5_request(self, cli: socket.socket):
-        try:
-            # HANDSHAKE ver + methods
             ver, n_methods = recv_exact(cli, 2)
             if ver != SOCKS_VERSION:
                 raise SocksVersionError(f"Invalid socks version: {ver}")
@@ -56,6 +27,7 @@ class Socks5ClientHandler(Handler):
             if cmd != CMD_CONNECT:
                 cli.sendall(create_socks_reply(REPLY_COMMAND_NOT_SUPPORTED))
                 raise SocksAuthError(f"Unsupported command: {cmd}")
+
             if atyp == ATYP_IPV4:
                 addr = socket.inet_ntoa(recv_exact(cli, 4))
             elif atyp == ATYP_DOMAIN:
@@ -68,18 +40,18 @@ class Socks5ClientHandler(Handler):
                 raise SocksError(f"Unsupported ATYP: {atyp}")
             port = struct.unpack("!H", recv_exact(cli, 2))[0]
             return addr, port
-        except Exception as e:
+        except SocksError:
             log.error(f"Client socks5 error: {e}")
             return None
-
-    def _connect_to_server(self, dest_addr):
-        if not dest_addr:
+        except Exception as e:
+            cli.sendall(create_socks_reply(REPLY_GENERAL_FAILURE))
+            log.error(f"Client error: {e}")
             return None
-        try:
-            remote = self.transport_adapter.create_connection(
-                self.server_addr, self.timeout
-            )
 
+    def server_handshake(self, remote, dest_addr):
+        if not dest_addr:
+            return False
+        try:
             addr_bytes = pack_address(dest_addr, ATYP_DOMAIN)
             remote.sendall(addr_bytes)
 
@@ -87,25 +59,20 @@ class Socks5ClientHandler(Handler):
             if not resp:
                 raise SocksError("No response from remote server")
             if resp == b"\x00":
-                return remote
+                return True
             else:
                 log.debug(f"Remote server connection failed: {resp.hex()}")
-            return None
+            return False
+        except ssl.SSLError as e:
+            log.error(f"TLS handshake failed: {e}")
+            return False
         except Exception as e:
             log.error(f"TCP CONNECT error: {e}")
-            return None
+            return False
 
 
-class Socks5ServerHandler(Handler):
-
-    def handle(self, conn, peer):
-        try:
-            return conn, self._socks5_request(conn)
-        except Exception as e:
-            log.error(f"Server error {peer[0]}:{peer[1]}: {e}")
-            return None, None
-
-    def _socks5_request(self, cli: socket.socket):
+class Socks5ServerHandshakeProtocol(HandshakeProtocol):
+    def client_handshake(self, cli: socket.socket):
         try:
             if hasattr(cli, "cipher"):
                 log.debug(f"TLS connection: {cli.cipher()}")
@@ -124,22 +91,15 @@ class Socks5ServerHandler(Handler):
             else:
                 log.debug(f"Unsupported address type: {addr_type}")
                 cli.sendall(b"\x01")
-                return
+                return None
+
             port_data = recv_exact(cli, 2)
             dest_port = struct.unpack("!H", port_data)[0]
+            return dest_addr, dest_port
         except Exception as e:
-            log.error(f"Address parse error: {e}")
+            log.error(f"SOCKS5 server handshake error: {e}")
             cli.sendall(b"\x01")
-            return
+            return None
 
-        log.info(f"Connecting to {dest_addr}:{dest_port}")
-        try:
-            desk_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            desk_sock.settimeout(self.timeout)
-            desk_sock.connect((dest_addr, dest_port))
-
-            cli.sendall(b"\x00")
-            return desk_sock
-        except Exception as e:
-            log.error(f"Error on destination {dest_addr}:{dest_port}: {e}")
-            cli.sendall(b"\x01")
+    def server_handshake(self, remote, dest_addr):
+        return True
