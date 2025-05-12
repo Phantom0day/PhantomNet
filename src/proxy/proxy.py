@@ -80,7 +80,10 @@ class ClientProxy(BaseProxy):
         c = self.config.get("transport", default={})
         t = c.get("type", "plain")
         if t == "tls":
-            return TlsClientAdapter(c.get("sni", "google.com"), cafile=c["cert"])
+            return TlsClientAdapter(
+                c.get("sni", "google.com"),
+                cafile=c.get("cert", None),
+            )
         return PlainTCPAdapter()
 
 

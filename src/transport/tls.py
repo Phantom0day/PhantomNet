@@ -8,6 +8,8 @@ class TlsClientAdapter(TransportAdapter):
         self._verify = verify
         self._ctx = ssl.create_default_context(cafile=cafile)
         self._ctx.check_hostname = verify
+        if not verify:
+            self._ctx.verify_mode = ssl.CERT_NONE
 
     def create_connection(self, address, timeout=None):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
