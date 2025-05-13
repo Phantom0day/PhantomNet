@@ -1,4 +1,4 @@
-import socket
+import asyncio
 from abc import ABC, abstractmethod
 from typing import Tuple, Dict, Any, Optional
 
@@ -8,6 +8,13 @@ class HandshakeProtocol(ABC):
         self.timeout = timeout
 
     @abstractmethod
-    def client_handshake(self, conn: socket.socket) -> Tuple[str, int]: ...
+    async def client_handshake(
+        self,
+        client: Tuple[asyncio.StreamReader, asyncio.StreamWriter],
+    ) -> Tuple[str, int]: ...
     @abstractmethod
-    def server_handshake(self, remote: socket.socket, dest_addr) -> bool: ...
+    async def server_handshake(
+        self,
+        remote: Tuple[asyncio.StreamReader, asyncio.StreamWriter],
+        dest_addr,
+    ) -> bool: ...

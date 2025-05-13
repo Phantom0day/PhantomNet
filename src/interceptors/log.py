@@ -11,13 +11,13 @@ class PacketLogger(BaseInterceptor):
         self.log_enable = log.level <= self.log_level
         self.max_length = getattr(logging, log_level.upper(), logging.INFO)
 
-    def pack(self, ctx):
+    async def pack(self, ctx):
         if self.log_enable:
             data = ctx.data[:64].hex() if ctx.data else ""
             log.log(self.log_level, f"PACK>>{len(data)} REQ>>{data}")
         return ctx
 
-    def unpack(self, ctx):
+    async def unpack(self, ctx):
         if self.log_enable:
             data = ctx.data[:64].hex() if ctx.data else ""
             log.log(self.log_level, f"after UNPK>>{len(data)} RES>>{data}")
@@ -31,13 +31,13 @@ class PacketLogger2(BaseInterceptor):
         self.log_enable = log.level <= self.log_level
         self.max_length = getattr(logging, log_level.upper(), logging.INFO)
 
-    def pack(self, ctx):
+    async def pack(self, ctx):
         if self.log_enable:
             data = ctx.data[:64].hex() if ctx.data else ""
             log.log(self.log_level, f"after PACK>>{len(data)} REQ>>{data}")
         return ctx
 
-    def unpack(self, ctx):
+    async def unpack(self, ctx):
         if self.log_enable:
             data = ctx.data[:64].hex() if ctx.data else ""
             log.log(self.log_level, f"UNPK>>{len(data)} RES>>{data}")

@@ -12,7 +12,7 @@ class ObfuscationInterceptor(BaseInterceptor):
         if isinstance(self.salt, str):
             self.salt = self.salt.encode()
 
-    def pack(self, ctx):
+    async def pack(self, ctx):
         data = ctx.data
         if data and len(data) >= len(self.salt):
             ctx.data = (
@@ -20,7 +20,7 @@ class ObfuscationInterceptor(BaseInterceptor):
             )
         return ctx
 
-    def unpack(self, ctx):
+    async def unpack(self, ctx):
         data = ctx.data
         if data and len(data) >= len(self.salt):
             ctx.data = (

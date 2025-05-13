@@ -6,7 +6,7 @@ class InterceptorChain:
     def __init__(self, interceptors: List):
         self.interceptors = interceptors
 
-    def run(self, ctx: ProtocolContext) -> ProtocolContext:
+    async def run(self, ctx: ProtocolContext) -> ProtocolContext:
         chain = (
             self.interceptors
             if ctx.operation is Operation.PACK
@@ -14,7 +14,7 @@ class InterceptorChain:
         )
 
         for it in chain:
-            ctx = it.handle(ctx)
+            ctx = await it.handle(ctx)
             if ctx.drop:
                 break
         return ctx

@@ -3,13 +3,13 @@ from .core import BaseInterceptor
 
 
 class LengthPrefixFramer(BaseInterceptor):
-    def pack(self, ctx):
+    async def pack(self, ctx):
         if ctx.data:
             payload = ctx.data
             ctx.data = struct.pack("!H", len(payload)) + payload
         return ctx
 
-    def unpack(self, ctx):
+    async def unpack(self, ctx):
         cache = ctx.meta.get("lp_cache", b"") + ctx.data
         frame, length = b"", 0
 

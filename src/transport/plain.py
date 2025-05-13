@@ -1,16 +1,24 @@
+import asyncio
 from .base import *
 
 
 class PlainTCPAdapter(TransportAdapter):
-    def create_outbound(self, address, timeout=None):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    async def create_outbound(self, address, timeout=None):
+        connect_task = asyncio.open_connection(address[0], address[1])
         if timeout:
-            sock.settimeout(timeout)
-        sock.connect(address)
-        return sock
+            try:
+                reader, writer = await asyncio.wait_for(connect_task, timeout)
+                return reader, writer
+            except asyncio.TimeoutError:
+                raise ConnectionError(
+                    f"Connection to {address[0]}:{address[1]} timed out"
+                )
+        else:
+            reader, writer = await connect_task
+        return reader, writer
 
-    def wrap_inbound(self, sock):
-        return sock
+    async def wrap_inbound(self, reader, writer):
+        return reader, writer
 
     def get_protocol_features(self):
         return {
