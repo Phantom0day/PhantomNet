@@ -1,7 +1,5 @@
 import asyncio
-import select
-import ssl
-from asyncio import Transport, StreamReader, StreamWriter
+from asyncio import StreamReader, StreamWriter
 from src.core.context import *
 from src.utils import *
 
@@ -20,73 +18,46 @@ class Session:
 
     async def start(self):
         try:
-            inbound_task = asyncio.create_task(self._handle_inbound())
-            outbound_task = asyncio.create_task(self._handle_outbound())
-
-            done, pending = await asyncio.wait(
-                [inbound_task, outbound_task],
-                return_when=asyncio.FIRST_COMPLETED,
+            t1 = asyncio.create_task(
+                self._pipe(
+                    self.inbound,
+                    self.outbound,
+                    Operation.UNPACK,
+                )
             )
-
-            # cancel unfinished tasks
-            for task in pending:
-                task.cancel()
-
-            # try to retrieve result
-            for task in done:
-                try:
-                    await task
-                except Exception as e:
-                    log.error(f"Session task error: {e}")
+            t2 = asyncio.create_task(
+                self._pipe(
+                    self.outbound,
+                    self.inbound,
+                    Operation.PACK,
+                )
+            )
+            await asyncio.wait([t1, t2], return_when=asyncio.FIRST_COMPLETED)
         except Exception as e:
             log.error(f"Session error: {e}")
         finally:
             self.running = False
-            if not self.inbound[1].is_closing():
-                self.inbound[1].close()
-                await self.inbound[1].wait_closed()
-            if not self.outbound[1].is_closing():
-                self.outbound[1].close()
-                await self.outbound[1].wait_closed()
+            await self._close(self.inbound[1])
+            await self._close(self.outbound[1])
 
-    async def _handle_inbound(self):
+    async def _pipe(
+        self,
+        src: Tuple[StreamReader, StreamWriter],
+        dst: Tuple[StreamReader, StreamWriter],
+        op: Operation,
+    ):
         while self.running:
-            try:
-                # read data from packed stream
-                data = await self.inbound[0].read(DEFAULT_BUFFER_SIZE)
-                if not data:  # connection closed
-                    break
-
-                # process data through interceptor chain
-                ctx = ProtocolContext(data, operation=Operation.UNPACK)
-                ctx = await self.chain.run(ctx)
-
-                if ctx.drop:
-                    self.running = False
-                    break
-                if ctx.data:
-                    await write_data(self.outbound[1], ctx.data)
-            except Exception as e:
-                log.error(f"Error handling inbound data")
-                log.exception(e)
+            data = await src[0].read(DEFAULT_BUFFER_SIZE)
+            if not data:
                 break
-
-    async def _handle_outbound(self):
-        while self.running:
-            try:
-                # read data from unpacked stream
-                data = await self.outbound[0].read(DEFAULT_BUFFER_SIZE)
-                if not data:  # connection closed
-                    break
-
-                ctx = ProtocolContext(data, operation=Operation.PACK)
-                ctx = await self.chain.run(ctx)
-
-                if ctx.drop:
-                    self.running = False
-                    break
-                if ctx.data:
-                    await write_data(self.inbound[1], ctx.data)
-            except Exception as e:
-                log.error(f"Error handling outbound data: {e}")
+            ctx = ProtocolContext(data=data, operation=op)
+            ctx = await self.chain.run(ctx)
+            if ctx.drop or not ctx.data:
                 break
+            await write_data(dst[1], ctx.data)
+
+    @staticmethod
+    async def _close(writer: StreamWriter):
+        if not writer.is_closing():
+            writer.close()
+            await writer.wait_closed()
