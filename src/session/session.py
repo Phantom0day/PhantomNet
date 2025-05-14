@@ -1,6 +1,6 @@
 import asyncio
 from asyncio import StreamReader, StreamWriter
-from src.core.context import *
+from src.core import *
 from src.utils import *
 
 
@@ -46,16 +46,37 @@ class Session:
         dst: Tuple[StreamReader, StreamWriter],
         op: Operation,
     ):
+        reader, writer = src
+        dst_writer = dst[1]
         while self.running:
             try:
-                data = await src[0].read(DEFAULT_BUFFER_SIZE)
+                if isinstance(reader, FramedReader):
+                    frame = await reader.read_frame()
+                    data = frame["data"]
+                    frame_type = frame["type"]
+                    channel_id = frame["channel_id"]
+                else:
+                    data = await src[0].read(DEFAULT_BUFFER_SIZE)
+                    frame_type = FrameType.SOCKS
+                    channel_id = 0
+
                 if not data:
                     break
-                ctx = ProtocolContext(data=data, operation=op)
+                ctx = ProtocolContext(
+                    data=data,
+                    frame_type=frame_type,
+                    channel_id=channel_id,
+                    operation=op,
+                )
                 ctx = await self.chain.run(ctx)
                 if ctx.drop or not ctx.data:
                     break
-                await write_data(dst[1], ctx.data)
+
+                if isinstance(dst_writer, FramedWriter):
+                    dst_writer.write(ctx.data, ctx.frame_type, ctx.channel_id)
+                    await dst_writer.drain()
+                else:
+                    await write_data(dst_writer, ctx.data)
             except (ConnectionResetError, BrokenPipeError):
                 log.info(
                     "Peer closed connection (channel %s -> %s)",

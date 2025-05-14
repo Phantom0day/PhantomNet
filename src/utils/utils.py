@@ -6,7 +6,6 @@ import logging
 from typing import Optional, Tuple, BinaryIO
 from .constants import *
 from src.core.operation import Operation
-from src.core.chain import InterceptorChain
 
 log = logging.getLogger()
 

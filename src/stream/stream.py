@@ -13,14 +13,17 @@ class FramedReader:
         self._queue: List[Dict[str, Any]] = []
 
     async def read(self, n: int = -1) -> bytes:
+        frame = await self.read_frame()
+        return frame["data"]
+
+    async def read_frame(self) -> Dict[str, Any]:
         while not self._queue:
             chunk = await self._reader.read(DEFAULT_BUFFER_SIZE)
             if not chunk:
-                return b""
+                return {"data": b"", "type": FrameType.SOCKS, "channel_id": 0}
             self._queue.extend(self._framer.feed(chunk))
 
-        frame = self._queue.pop(0)
-        return frame["data"]
+        return self._queue.pop(0)
 
 
 class FramedWriter:
@@ -36,6 +39,13 @@ class FramedWriter:
     ):
         framed = self._framer.pack(payload, frame_type, channel_id)
         self._writer.write(framed)
+
+    def write_frame(self, frame: Dict[str, Any]):
+        self.write(
+            frame.get("data", b""),
+            frame.get("type", FrameType.SOCKS),
+            frame.get("channel_id", 0),
+        )
 
     def is_closing(self):
         return self._writer.is_closing()
