@@ -30,7 +30,6 @@ data/
 .vscode/
 *.db
 
-src.txt
 config.json
 config.yaml
 
