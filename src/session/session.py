@@ -47,14 +47,25 @@ class Session:
         op: Operation,
     ):
         while self.running:
-            data = await src[0].read(DEFAULT_BUFFER_SIZE)
-            if not data:
+            try:
+                data = await src[0].read(DEFAULT_BUFFER_SIZE)
+                if not data:
+                    break
+                ctx = ProtocolContext(data=data, operation=op)
+                ctx = await self.chain.run(ctx)
+                if ctx.drop or not ctx.data:
+                    break
+                await write_data(dst[1], ctx.data)
+            except (ConnectionResetError, BrokenPipeError):
+                log.info(
+                    "Peer closed connection (channel %s -> %s)",
+                    src[1].get_extra_info("peername"),
+                    dst[1].get_extra_info("peername"),
+                )
                 break
-            ctx = ProtocolContext(data=data, operation=op)
-            ctx = await self.chain.run(ctx)
-            if ctx.drop or not ctx.data:
+            except Exception:
+                log.exception("Unhandled pipe error")
                 break
-            await write_data(dst[1], ctx.data)
 
     @staticmethod
     async def _close(writer: StreamWriter):
