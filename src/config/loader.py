@@ -21,7 +21,7 @@ class ConfigLoader:
                 "max_connections": 100,
                 "timeout": 300,
             },
-            "local": {
+            "client": {
                 "host": "127.0.0.1",
                 "port": 1080,
                 "server_host": None,

@@ -14,13 +14,13 @@ class AESEncryptionInterceptor(BaseInterceptor):
         else:
             self.key = key[:32].ljust(32, b"\0")
 
-    def pack(self, ctx):
+    async def pack(self, ctx):
         data = ctx.data
         if data:
             ctx.data = self._encrypt(data)
         return ctx
 
-    def unpack(self, ctx):
+    async def unpack(self, ctx):
         data = ctx.data
         if data and self._is_encrypted(data):
             try:
@@ -53,7 +53,7 @@ class PacketSizeNormalizer(BaseInterceptor):
     def __init__(self, target_sizes=(64, 256, 512, 1024)):
         self.sizes = target_sizes
 
-    def pack(self, ctx):
+    async def pack(self, ctx):
         data = ctx.data
         if not data:
             return ctx

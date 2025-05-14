@@ -1,5 +1,7 @@
+import asyncio
 import select
 import ssl
+from asyncio import Transport, StreamReader, StreamWriter
 from src.core.context import *
 from src.utils import *
 
@@ -7,71 +9,84 @@ from src.utils import *
 class Session:
     def __init__(
         self,
-        inbound: socket.socket,
-        outbound: socket.socket,
+        inbound: Tuple[StreamReader, StreamWriter],
+        outbound: Tuple[StreamReader, StreamWriter],
         chain: InterceptorChain,
-        max_buf=MAX_BUFFER_SIZE,
     ):
-        if inbound is None or outbound is None:
-            log.error("Session initialized with None socket")
-            self.running = False
-            return
-        self.in_sock = inbound
-        self.out_sock = outbound
+        self.inbound = inbound
+        self.outbound = outbound
         self.chain = chain
-        self.max_buf = max_buf
-        self.buf_cli, self.buf_rem = b"", b""
         self.running = True
 
-    def loop(self):
+    async def start(self):
         try:
-            if not isinstance(self.in_sock, ssl.SSLSocket):
-                self.in_sock.setblocking(False)
-            if not isinstance(self.out_sock, ssl.SSLSocket):
-                self.out_sock.setblocking(False)
-            rlist = [self.in_sock, self.out_sock]
-            stage = "transport"
-            while self.running:
-                try:
-                    r, _, e = select.select(rlist, [], rlist, 1.0)
-                except (select.error, socket.error) as e:
-                    log.error(f"Select error: {e}")
-                    break
-                if self.in_sock in e or self.out_sock in e:
-                    log.debug(f"Socket error: {e}")
-                    break
+            inbound_task = asyncio.create_task(self._handle_inbound())
+            outbound_task = asyncio.create_task(self._handle_outbound())
 
-                for s in r:
-                    if s is self.out_sock:  # outbound → inbound
-                        self._pump(
-                            self.out_sock,
-                            self.in_sock,
-                            ProtocolContext(stage=stage, operation=Operation.PACK),
-                        )
-                    else:
-                        self._pump(
-                            self.in_sock,
-                            self.out_sock,
-                            ProtocolContext(stage=stage, operation=Operation.UNPACK),
-                        )
+            done, pending = await asyncio.wait(
+                [inbound_task, outbound_task],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            # cancel unfinished tasks
+            for task in pending:
+                task.cancel()
+
+            # try to retrieve result
+            for task in done:
+                try:
+                    await task
+                except Exception as e:
+                    log.error(f"Session task error: {e}")
         except Exception as e:
             log.error(f"Session error: {e}")
         finally:
-            close_socket(self.in_sock)
-            close_socket(self.out_sock)
-
-    def _pump(self, src: socket.socket, dst: socket.socket, ctx: ProtocolContext):
-        try:
-            ctx.data = src.recv(DEFAULT_BUFFER_SIZE)
-            if not ctx.data:
-                self.running = False
-                return
-            ctx = self.chain.run(ctx)
-            if ctx.drop:
-                self.running = False
-                return
-            payload = ctx.data
-            if payload:
-                dst.sendall(payload)
-        except socket.error:
             self.running = False
+            if not self.inbound[1].is_closing():
+                self.inbound[1].close()
+                await self.inbound[1].wait_closed()
+            if not self.outbound[1].is_closing():
+                self.outbound[1].close()
+                await self.outbound[1].wait_closed()
+
+    async def _handle_inbound(self):
+        while self.running:
+            try:
+                # read data from packed stream
+                data = await self.inbound[0].read(DEFAULT_BUFFER_SIZE)
+                if not data:  # connection closed
+                    break
+
+                # process data through interceptor chain
+                ctx = ProtocolContext(data, operation=Operation.UNPACK)
+                ctx = await self.chain.run(ctx)
+
+                if ctx.drop:
+                    self.running = False
+                    break
+                if ctx.data:
+                    await write_data(self.outbound[1], ctx.data)
+            except Exception as e:
+                log.error(f"Error handling inbound data")
+                log.exception(e)
+                break
+
+    async def _handle_outbound(self):
+        while self.running:
+            try:
+                # read data from unpacked stream
+                data = await self.outbound[0].read(DEFAULT_BUFFER_SIZE)
+                if not data:  # connection closed
+                    break
+
+                ctx = ProtocolContext(data, operation=Operation.PACK)
+                ctx = await self.chain.run(ctx)
+
+                if ctx.drop:
+                    self.running = False
+                    break
+                if ctx.data:
+                    await write_data(self.inbound[1], ctx.data)
+            except Exception as e:
+                log.error(f"Error handling outbound data: {e}")
+                break

@@ -13,7 +13,7 @@ from src.utils import *
 
 # Global variables for clean shutdown
 server = None
-local_proxy = None
+client = None
 running = True
 
 
@@ -37,69 +37,76 @@ def setup_logging(config):
     else:
         handlers.append(logging.StreamHandler())
 
-    logging.basicConfig(level=level, format=DEFAULT_LOGGING_FORMAT, handlers=handlers)
-
-    return logging.getLogger(__name__)
+    logging.basicConfig(
+        level=level,
+        format=DEFAULT_LOGGING_FORMAT,
+        handlers=handlers,
+        force=True,
+    )
 
 
 def signal_handler(sig, frame):
+    if loop is not None and loop.is_running():
+        loop.call_soon_threadsafe(lambda: asyncio.create_task(shutdown()))
+
+
+async def shutdown():
     """Handle termination signals"""
-    global running, server, local_proxy
+    global running, server, client
     print("\nShutting down...")
     running = False
     if server:
-        server.stop()
-    if local_proxy:
-        local_proxy.stop()
-    sys.exit(0)
+        await server.stop()
+    if client:
+        await client.stop()
+    # sys.exit(0)
 
 
-def run_server(config: ConfigLoader, logger):
+async def run_server(config: ConfigLoader):
     """Run in server mode"""
     global server
 
     # Get configuration
     host = config.get("server", "host", "0.0.0.0")
     port = config.get("server", "port", 8388)
-    interceptors = config.create_interceptors()
+    interceptors = await create_interceptors(config)
 
     # Create and start server
     server = ServerProxy(config, host, port, interceptors)
-    logger.info(f"Starting remote server on {host}:{port}")
-    logger.info(f"Using profile: {config.get_active_profile()}")
-    logger.info(
+    log.info(f"Starting remote server on {host}:{port}")
+    log.info(f"Using profile: {config.get_active_profile()}")
+    log.info(
         f"Active interceptors: {', '.join([i.__class__.__name__ for i in interceptors])}"
     )
 
     try:
-        server.start()
+        await server.start()
     except KeyboardInterrupt:
-        server.stop()
+        await server.stop()
     except Exception as e:
-        logger.error(f"Server error: {e}")
-        server.stop()
+        log.error(f"Server error")
+        log.exception(e)
+        await server.stop()
 
 
-def run_local_proxy(config, logger):
+async def run_client(config):
     """Run as local client proxy"""
-    global local_proxy
+    global client
 
     # Get configuration
-    local_host = config.get("local", "host", "127.0.0.1")
-    local_port = config.get("local", "port", 1080)
-    server_host = config.get("local", "server_host")
-    server_port = config.get("local", "server_port", 8388)
+    local_host = config.get("client", "host", "127.0.0.1")
+    local_port = config.get("client", "port", 1080)
+    server_host = config.get("client", "server_host")
+    server_port = config.get("client", "server_port", 8388)
 
     if not server_host:
-        logger.error(
-            "Server host not specified. Use --server-host or set it in config."
-        )
+        log.error("Server host not specified. Use --server-host or set it in config.")
         return
 
-    interceptors = config.create_interceptors()
+    interceptors = await create_interceptors(config)
 
     # Create and start the local proxy
-    local_proxy = ClientProxy(
+    client = ClientProxy(
         config,
         local_host,
         local_port,
@@ -108,20 +115,23 @@ def run_local_proxy(config, logger):
         interceptors,
     )
 
-    logger.info(f"Starting local proxy on {local_host}:{local_port}")
-    logger.info(f"Remote server: {server_host}:{server_port}")
-    logger.info(f"Profile: {config.get_active_profile()}")
-    logger.info(
-        f"Interceptors: {', '.join([i.__class__.__name__ for i in interceptors])}"
-    )
+    log.info(f"Starting local proxy on {local_host}:{local_port}")
+    log.info(f"Remote server: {server_host}:{server_port}")
+    log.info(f"Profile: {config.get_active_profile()}")
+    log.info(f"Interceptors: {', '.join([i.__class__.__name__ for i in interceptors])}")
 
     try:
-        local_proxy.start()
+        await client.start()
     except KeyboardInterrupt:
-        local_proxy.stop()
+        await client.stop()
     except Exception as e:
-        logger.error(f"Local proxy error: {e}")
-        local_proxy.stop()
+        log.error(f"Local proxy error")
+        log.exception(e)
+        await client.stop()
+
+
+async def create_interceptors(config: ConfigLoader):
+    return config.create_interceptors()
 
 
 def generate_config(path):
@@ -163,7 +173,7 @@ def main():
     )
 
     # Local proxy mode
-    local_parser = subparsers.add_parser("local", help="Run as local client proxy")
+    local_parser = subparsers.add_parser("client", help="Run as local client proxy")
     local_parser.add_argument(
         "--local-host",
         help="Local bind address (default: 127.0.0.1)",
@@ -208,16 +218,22 @@ def main():
     config.update_from_args(args)
 
     # Setup logging
-    logger = setup_logging(config)
+    setup_logging(config)
 
-    # Register signal handler
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    async def _task():
+        global loop
+        loop = asyncio.get_running_loop()
 
-    # Run in the appropriate mode
-    if args.mode == "server":
-        run_server(config, logger)
-    elif args.mode == "local":
-        run_local_proxy(config, logger)
-    else:
-        parser.print_help()
+        # Register signal handler
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
+        # Run in the appropriate mode
+        if args.mode == "server":
+            await run_server(config)
+        elif args.mode == "client":
+            await run_client(config)
+        else:
+            parser.print_help()
+
+    asyncio.run(_task())

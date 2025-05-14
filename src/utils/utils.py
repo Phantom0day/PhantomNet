@@ -1,3 +1,4 @@
+import asyncio
 import errno
 import socket
 import struct
@@ -7,32 +8,18 @@ from .constants import *
 from src.core.operation import Operation
 from src.core.chain import InterceptorChain
 
-log = logging.getLogger(__name__)
+log = logging.getLogger()
 
 
-def recv_frame(sock: socket.socket, chain: InterceptorChain, ctx) -> Optional[bytes]:
-    while True:
-        try:
-            ctx.data = sock.recv(DEFAULT_BUFFER_SIZE)
-            if not ctx.data:
-                return None
-
-            ctx = chain.run(ctx)
-            if ctx.drop:
-                return None
-            if ctx.data:
-                frame, ctx.data = ctx.data, b""
-                return frame
-        except socket.error as e:
-            if e.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
-                continue
-            raise
+async def write_data(writer: asyncio.StreamWriter, data: bytes):
+    writer.write(data)
+    await writer.drain()
 
 
-def recv_exact(sock: socket.socket, n: int) -> Optional[bytes]:
+async def read_exact(reader: asyncio.StreamReader, n: int) -> bytes:
     buf = bytearray()
     while len(buf) < n:
-        chunk = sock.recv(n - len(buf))
+        chunk = await reader.read(n - len(buf))
         if not chunk:
             raise EOFError("unexpected EOF")
         buf.extend(chunk)

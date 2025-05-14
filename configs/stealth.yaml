@@ -9,7 +9,7 @@ server:
   timeout: 300 # seconds
 
 # Local proxy configuration
-local:
+client:
   host: 127.0.0.1
   port: 1080
   server_host: null # Must be specified by user

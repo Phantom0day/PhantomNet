@@ -27,42 +27,46 @@ class BaseProxy(ABC):
         self.running = False
         self.clients = set()  # Track active clients
         self.chain = InterceptorChain(self.interceptors)
+        self._listener = None
+        self._server_task = None
 
-    def start(self):
-        transport_adapter = self._get_adapter()
-        handshake_protocol = self._get_handshake_protocol()
-        handler = self._get_handler(transport_adapter, handshake_protocol)
+    async def start(self):
+        adapter = await self._get_adapter()
+        handshaker = self._get_handshake_protocol()
+        handler = self._get_handler(adapter, handshaker)
 
-        listener = TcpListener(
-            self.addr,
-            handler=lambda c, p: Session(
-                *handler.handle(c, p),
-                self.chain,
-            ).loop(),
-            adapter=transport_adapter,
-        )
+        listener = TcpListener(self.addr, handler, adapter)
+        listener.chain = self.chain
         self._listener = listener
-        listener.serve_forever()
+
+        self._server_task = asyncio.create_task(listener.start_server())
+
+        try:
+            await self._server_task
+        except asyncio.CancelledError:
+            log.info("Proxy server task cancelled")
+
+    async def stop(self):
+        """Stop the proxy"""
+        if self._listener:
+            await self._listener.stop()
+        if self._server_task and not self._server_task.done():
+            self._server_task.cancel()
+            try:
+                await self._server_task
+            except asyncio.CancelledError:
+                pass
 
     @abstractmethod
     def _get_handler(
         self, adapter: TransportAdapter, handshake: HandshakeProtocol
-    ) -> Handler:
-        raise NotImplementedError("Subclasses must implement this method")
+    ) -> Handler: ...
 
     @abstractmethod
-    def _get_adapter(self) -> TransportAdapter:
-        raise NotImplementedError("Subclasses must implement this method")
+    async def _get_adapter(self) -> TransportAdapter: ...
 
     @abstractmethod
     def _get_handshake_protocol(self) -> HandshakeProtocol: ...
-
-    def stop(self):
-        """Stop the proxy"""
-        log.info("Stopping proxy...")
-        self.running = False
-        for sock in self.clients.copy():
-            close_socket(sock)
 
 
 class ClientProxy(BaseProxy):
@@ -83,7 +87,7 @@ class ClientProxy(BaseProxy):
     def _get_handler(self, adapter, handshake):
         return Socks5ClientHandler(self.addr, self.server_addr, handshake, adapter)
 
-    def _get_adapter(self):
+    async def _get_adapter(self):
         c = self.config.get("transport", default={})
         t = c.get("type", "plain")
         if t == "tls":
@@ -110,7 +114,7 @@ class ServerProxy(BaseProxy):
     def _get_handler(self, adapter, handshake):
         return Socks5ServerHandler(self.addr, handshake, adapter)
 
-    def _get_adapter(self):
+    async def _get_adapter(self):
         c = self.config.get("transport", default={})
         t = c.get("type", "plain")
         if t == "tls":

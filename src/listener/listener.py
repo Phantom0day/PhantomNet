@@ -1,7 +1,9 @@
 import socket, threading, logging, select
 from src.utils import *
 from src.handshake import *
+from src.handshake.handler import Handler
 from src.transport import *
+from src.session import *
 
 
 class TcpListener:
@@ -14,43 +16,58 @@ class TcpListener:
         self.bind = bind
         self.handler = handler
         self.adapter = adapter or PlainTCPAdapter()
-        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server = None
+        self.chain = None
         self._running = False
 
-    def serve_forever(self):
-        self._sock.bind(self.bind)
-        self._sock.listen(5)
-        self._running = True
-        self._sock.settimeout(1)
+    async def start_server(self):
+        self.running = True
+        server = await asyncio.start_server(
+            self._handle_client,
+            *self.bind,
+            # add SSL context for TLS adapter
+            ssl=getattr(self.adapter, "ssl_context", None),
+            reuse_address=True,
+        )
+
+        self.server = server
         log.info(f"Listening on {self.bind[0]}:{self.bind[1]}")
-        while self._running:
-            try:
-                conn, peer = self._sock.accept()
-                wrapped_conn = self.adapter.wrap_inbound(conn)
-                if wrapped_conn is None:
-                    log.error(f"Failed to establish secure connection with {peer}")
-                    close_socket(conn)
-                    continue
-                t = threading.Thread(
-                    target=self._handle_connection,
-                    args=(wrapped_conn, peer),
-                    daemon=True,
-                )
-                t.start()
-            except socket.timeout:
-                continue
-            except OSError:
-                break
 
-    def _handle_connection(self, conn, peer):
         try:
-            self.handler(conn, peer)
-        except Exception as e:
-            log.error(f"Connection handler error: {e}")
+            async with server:
+                await server.serve_forever()
+        except asyncio.CancelledError:
+            log.info("Server task was cancelled")
         finally:
-            close_socket(conn)
+            self._running = False
 
-    def close(self):
-        self._running = False
-        close_socket(self._sock)
+    async def _handle_client(
+        self, *conn: Tuple[asyncio.StreamReader, asyncio.StreamWriter]
+    ):
+        peer = conn[1].get_extra_info("peername")
+        log.info(f"New connection from {peer}")
+
+        try:
+            wrapped_conn = await self.adapter.wrap_inbound(conn[0], conn[1])
+
+            _in, _out = await self.handler.handle(wrapped_conn, peer)
+            if _in[0] and _in[1] and _out[0] and _out[1]:
+                session = Session(_in, _out, self.chain)
+                await session.start()
+            else:
+                log.warning(f"Failed to establish proxied connection for {peer}")
+                if not conn[1].is_closing():
+                    conn[1].close()
+                    await conn[1].wait_closed()
+        except Exception as e:
+            log.error(f"Error handling client {peer}: {e}")
+            if not conn[1].is_closing():
+                conn[1].close()
+                await conn[1].wait_closed()
+
+    async def stop(self):
+        if self.server:
+            self.server.close()
+            await self.server.wait_closed()
+            self._running = False
+            log.info("Server stopped")

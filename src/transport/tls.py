@@ -1,5 +1,7 @@
+import asyncio
 import ssl, socket
-from .base import TransportAdapter
+import os
+from .base import *
 
 
 class TlsAdapter(TransportAdapter):
@@ -16,11 +18,6 @@ class TlsAdapter(TransportAdapter):
             "congestion_control": True,
             "sni_enabled": True,
             "perfect_forward_secrecy": True,
-            "cipher_suite": (
-                self._ctx.get_ciphers()[0]["name"]
-                if self._ctx.get_ciphers()
-                else "unknown"
-            ),
         }
 
 
@@ -28,34 +25,54 @@ class TlsClientAdapter(TlsAdapter):
     def __init__(self, sni: str, verify=False, cert=None):
         self._sni = sni
         self._verify = verify
-        self._ctx = ssl.create_default_context(cafile=cert)
-        self._ctx.check_hostname = verify
+        cert = cert if os.path.isfile(cert) else None
+        self._ssl_ctx = ssl.create_default_context(cafile=cert)
+        self._ssl_ctx.check_hostname = verify
         if not verify:
-            self._ctx.verify_mode = ssl.CERT_NONE
+            self._ssl_ctx.verify_mode = ssl.CERT_NONE
 
-    def create_outbound(self, address, timeout=None):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        if timeout:
-            sock.settimeout(timeout)
-        sock.connect(address)
-        return self._ctx.wrap_socket(sock, server_hostname=self._sni)
+    async def create_outbound(self, address, timeout=None):
+        r, w = await asyncio.open_connection(
+            *address,
+            ssl=self._ssl_ctx,
+            server_hostname=self._sni,
+            ssl_handshake_timeout=timeout,
+        )
 
-    def wrap_inbound(self, sock):
-        return sock
+        return r, w
+
+    async def wrap_inbound(self, reader, writer):
+        return reader, writer
 
 
 class TlsServerAdapter(TlsAdapter):
     def __init__(self, cert: str, key: str):
-        self._ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        self._ctx.load_cert_chain(certfile=cert, keyfile=key)
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+        ctx.load_cert_chain(certfile=cert, keyfile=key)
+        self._ssl_ctx = ctx
 
-    def create_outbound(self, address, timeout=None):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    async def create_outbound(self, address, timeout=None):
+        connect_task = asyncio.open_connection(*address)
         if timeout:
-            sock.settimeout(timeout)
-        sock.connect(address)
-        return sock
+            try:
+                reader, writer = await asyncio.wait_for(connect_task, timeout)
+            except asyncio.TimeoutError:
+                raise ConnectionError(
+                    f"Connection to {address[0]}:{address[1]} timed out"
+                )
+        else:
+            reader, writer = await connect_task
+        return reader, writer
 
-    def wrap_inbound(self, sock):
+    async def wrap_inbound(self, r, w):
+        # for asyncio streams we cannot retrofit SSL onto an existing reader/writer,
+        # so we let Listener pass `ssl=self._ctx` directly – return originals.
+        return r, w
 
-        return self._ctx.wrap_socket(sock, server_side=True)
+    # async def wrap_inbound(self, sock):
+
+    #     return self._ssl_ctx.wrap_socket(sock, server_side=True)
+    @property
+    def ssl_context(self):
+        return self._ssl_ctx

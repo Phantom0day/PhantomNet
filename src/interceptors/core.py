@@ -7,16 +7,17 @@ from src.utils import *
 class BaseInterceptor(ABC):
     """Base interceptor interface"""
 
-    def handle(
+    async def handle(
         self,
         ctx: ProtocolContext,
     ) -> ProtocolContext:
-        return self.pack(ctx) if ctx.operation is Operation.PACK else self.unpack(ctx)
+        task = self.pack(ctx) if ctx.operation is Operation.PACK else self.unpack(ctx)
+        return await task
 
-    def pack(self, ctx: ProtocolContext) -> ProtocolContext:
+    async def pack(self, ctx: ProtocolContext) -> ProtocolContext:
         """process C2S traffic"""
         return ctx
 
-    def unpack(self, ctx: ProtocolContext) -> ProtocolContext:
+    async def unpack(self, ctx: ProtocolContext) -> ProtocolContext:
         """process S2C traffic"""
         return ctx
