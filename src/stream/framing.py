@@ -26,9 +26,11 @@ class Framer:
         self._cache += data
         frames = []
 
-        while len(self._cache) >= 3:
+        while True:
+            if len(self._cache) < 5:
+                break
             total_length = struct.unpack("!H", self._cache[:2])[0]
-            if len(self._cache) - 2 < total_length:
+            if len(self._cache) < 2 + total_length:
                 break
 
             frame_type = self._cache[2]

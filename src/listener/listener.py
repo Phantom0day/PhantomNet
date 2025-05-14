@@ -60,7 +60,8 @@ class TcpListener:
                     conn[1].close()
                     await conn[1].wait_closed()
         except Exception as e:
-            log.error(f"Error handling client {peer}: {e}")
+            log.error(f"Error handling client {peer}")
+            log.exception(e)
             if not conn[1].is_closing():
                 conn[1].close()
                 await conn[1].wait_closed()

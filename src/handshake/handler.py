@@ -3,8 +3,9 @@ from typing import Tuple
 from src.core.errors import *
 from src.handshake import HandshakeProtocol
 from src.handshake import *
-from src.utils import *
+from src.stream import *
 from src.transport import *
+from src.utils import *
 
 
 class Handler(ABC):
@@ -55,7 +56,8 @@ class Socks5ClientHandler(Handler):
                 await write_data(client[1], create_socks_reply(REPLY_HOST_UNREACHABLE))
                 return None, None
             await write_data(client[1], b"\x05\x00\x00\x01" + b"\x00" * 6)
-            return client, remote
+            wrapped_remote = FramedReader(remote[0]), FramedWriter(remote[1])
+            return wrapped_remote, client
         except Exception as e:
             log.error(f"Client error {peer[0]}:{peer[1]}")
             log.exception(e)
@@ -83,7 +85,8 @@ class Socks5ServerHandler(Handler):
                 await write_data(conn[1], b"\x01")
                 return None, None
             await write_data(conn[1], b"\x00")
-            return conn, remote
+            wrapped_conn = FramedReader(conn[0]), FramedWriter(conn[1])
+            return wrapped_conn, remote
         except Exception as e:
             log.error(f"Server error {peer[0]}:{peer[1]}: {e}")
             await write_data(conn[1], b"\x01")
