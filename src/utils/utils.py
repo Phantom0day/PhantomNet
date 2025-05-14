@@ -20,15 +20,12 @@ async def read_exact(reader: asyncio.StreamReader, n: int) -> bytes:
     while len(buf) < n:
         chunk = await reader.read(n - len(buf))
         if not chunk:
-            raise EOFError("unexpected EOF")
+            raise EOFError(f"unexpected EOF, {buf.hex()}")
         buf.extend(chunk)
     return bytes(buf)
 
 
 def get_address_type(addr: str) -> int:
-    """
-    Determine the SOCKS5 address type for a given address string.
-    """
     try:
         # check if it's an IPv4 address (x.x.x.x)
         if addr.count(".") == 3 and all(

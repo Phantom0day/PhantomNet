@@ -5,6 +5,7 @@ from src.handshake import HandshakeProtocol
 from src.handshake import *
 from src.stream import *
 from src.transport import *
+from src.udp import *
 from src.utils import *
 
 
@@ -50,6 +51,8 @@ class Socks5ClientHandler(Handler):
             remote = await self.transporter.create_outbound(
                 self.server_addr, self.timeout
             )
+            if dest_addr == ("UDP", 0):
+                return self._udp_associate(client, remote)
             result = await self.handshaker.server_handshake(remote, dest_addr)
             if not result:
                 log.error(f"Server connection failed for {peer[0]}:{peer[1]}")
@@ -62,6 +65,23 @@ class Socks5ClientHandler(Handler):
             log.error(f"Client error {peer[0]}:{peer[1]}")
             log.exception(e)
             return None, None
+
+    async def _udp_associate(
+        self,
+        client: Tuple[StreamReader, StreamWriter],
+        remote: Tuple[StreamReader, StreamWriter],
+    ):
+        wrapped_remote = FramedReader(remote[0]), FramedWriter(remote[1])
+        ch_id = Framer.alloc_channel()
+
+        relay = UDPRelay(wrapped_remote[1], ch_id)
+
+        bind_addr = await relay.start(*self.addr)
+        reply = create_socks_reply(REPLY_SUCCESS, *bind_addr)
+        await write_data(client[1], reply)
+
+        client[1].udp_relay = relay
+        return wrapped_remote, client
 
 
 class Socks5ServerHandler(Handler):
@@ -85,6 +105,7 @@ class Socks5ServerHandler(Handler):
                 await write_data(conn[1], b"\x01")
                 return None, None
             await write_data(conn[1], b"\x00")
+            conn[1].udp_hub = None
             wrapped_conn = FramedReader(conn[0]), FramedWriter(conn[1])
             return wrapped_conn, remote
         except Exception as e:

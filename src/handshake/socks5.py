@@ -29,31 +29,35 @@ class Socks5ClientHandshakeProtocol(HandshakeProtocol):
             ver, cmd, _, atyp = await read_exact(client[0], 4)
             if ver != SOCKS_VERSION:
                 raise SocksVersionError(f"Invalid socks version: {ver}")
-            if cmd != CMD_CONNECT:
+            if cmd == CMD_CONNECT:
+                if atyp == ATYP_IPV4:
+                    addr_bytes = await read_exact(client[0], 4)
+                    addr = socket.inet_ntoa(addr_bytes)
+                elif atyp == ATYP_DOMAIN:
+                    domain_len = (await read_exact(client[0], 1))[0]
+                    domain = await read_exact(client[0], domain_len)
+                    addr = domain.decode()
+                elif atyp == ATYP_IPV6:
+                    addr_bytes = await read_exact(client[0], 16)
+                    addr = socket.inet_ntop(socket.AF_INET6, addr_bytes)
+                else:
+                    await write_data(
+                        client[1], create_socks_reply(REPLY_ADDRESS_TYPE_NOT_SUPPORTED)
+                    )
+                    raise SocksError(f"Unsupported ATYP: {atyp}")
+
+                port = struct.unpack("!H", await read_exact(client[0], 2))[0]
+                return addr, port
+            elif cmd == CMD_UDP_ASSOCIATE:
+                _ = await self._read_dest(client[0], atyp)
+                port = struct.unpack("!H", await read_exact(client[0], 2))[0]
+                return ("UDP", 0)
+            else:
                 await write_data(
                     client[1],
                     create_socks_reply(REPLY_COMMAND_NOT_SUPPORTED),
                 )
                 raise SocksAuthError(f"Unsupported command: {cmd}")
-
-            if atyp == ATYP_IPV4:
-                addr_bytes = await read_exact(client[0], 4)
-                addr = socket.inet_ntoa(addr_bytes)
-            elif atyp == ATYP_DOMAIN:
-                domain_len = (await read_exact(client[0], 1))[0]
-                domain = await read_exact(client[0], domain_len)
-                addr = domain.decode()
-            elif atyp == ATYP_IPV6:
-                addr_bytes = await read_exact(client[0], 16)
-                addr = socket.inet_ntop(socket.AF_INET6, addr_bytes)
-            else:
-                await write_data(
-                    client[1], create_socks_reply(REPLY_ADDRESS_TYPE_NOT_SUPPORTED)
-                )
-                raise SocksError(f"Unsupported ATYP: {atyp}")
-
-            port = struct.unpack("!H", await read_exact(client[0], 2))[0]
-            return addr, port
         except SocksError:
             log.error(f"Client socks5 error")
             log.exception(e)

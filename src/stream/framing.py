@@ -46,3 +46,11 @@ class Framer:
             )
             self._cache = self._cache[2 + total_length :]
         return frames
+
+    _next_ch = 1
+
+    @classmethod
+    def alloc_channel(cls):
+        ch = cls._next_ch
+        cls._next_ch = (cls._next_ch + 1) & 0xFFFF
+        return ch

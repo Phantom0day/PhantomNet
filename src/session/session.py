@@ -1,6 +1,7 @@
 import asyncio
 from asyncio import StreamReader, StreamWriter
 from src.core import *
+from src.udp import *
 from src.utils import *
 
 
@@ -10,11 +11,24 @@ class Session:
         inbound: Tuple[StreamReader, StreamWriter],
         outbound: Tuple[StreamReader, StreamWriter],
         chain: InterceptorChain,
+        udp_relay=None,
+        udp_hub=None,
     ):
         self.inbound = inbound
         self.outbound = outbound
         self.chain = chain
         self.running = True
+
+        self.udp_relay: UDPRelay = (
+            udp_relay
+            or getattr(outbound[1], "udp_relay", None)
+            or getattr(inbound[1], "udp_relay", None)
+        )
+        self.udp_hub: UDPHub = (
+            udp_hub
+            or getattr(inbound[1], "udp_hub", None)
+            or getattr(outbound[1], "udp_hub", None)
+        )
 
     async def start(self):
         try:
@@ -62,6 +76,19 @@ class Session:
 
                 if not data:
                     break
+                if frame_type == FrameType.UDP:
+                    if op is Operation.UNPACK:
+                        if self.udp_hub is None and isinstance(
+                            self.inbound[1], FramedWriter
+                        ):
+                            self.udp_hub = UDPHub(self.inbound[1], channel_id)
+                        if self.udp_hub:
+                            await self.udp_hub.forward(data)
+                    else:
+                        if self.udp_relay:
+                            self.udp_relay.write_back(data)
+                    continue
+
                 ctx = ProtocolContext(
                     data=data,
                     frame_type=frame_type,
@@ -93,3 +120,9 @@ class Session:
         if not writer.is_closing():
             writer.close()
             await writer.wait_closed()
+
+    def register_udp_relay(self, relay):
+        self.udp_relay = relay
+
+    def register_udp_hub(self, hub):
+        self.udp_hub = hub
