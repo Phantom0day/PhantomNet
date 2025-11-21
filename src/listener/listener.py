@@ -21,7 +21,7 @@ class TcpListener:
         self._running = False
 
     async def start_server(self):
-        self.running = True
+        self._running = True
         server = await asyncio.start_server(
             self._handle_client,
             *self.bind,

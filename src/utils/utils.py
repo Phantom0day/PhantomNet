@@ -182,7 +182,7 @@ def close_socket(sock: socket.socket) -> None:
 
 def packAndSend(sock: socket.socket, chain, ctx, data: bytes = None):
     if data:
-        ctx.req_data = data
+        ctx.data = data
     ctx.operation = Operation.PACK
     chain.run(ctx)
     sock.sendall(ctx.req_data)

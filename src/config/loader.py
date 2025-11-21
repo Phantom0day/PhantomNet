@@ -231,16 +231,16 @@ class ConfigLoader:
 
         # Local proxy config
         if hasattr(args, "local_host") and args.local_host:
-            self.set("local", "host", args.local_host)
+            self.set("client", "host", args.local_host)
 
         if hasattr(args, "local_port") and args.local_port:
-            self.set("local", "port", args.local_port)
+            self.set("client", "port", args.local_port)
 
         if hasattr(args, "server_host") and args.server_host:
-            self.set("local", "server_host", args.server_host)
+            self.set("client", "server_host", args.server_host)
 
         if hasattr(args, "server_port") and args.server_port:
-            self.set("local", "server_port", args.server_port)
+            self.set("client", "server_port", args.server_port)
 
         # General config
         if hasattr(args, "verbose") and args.verbose:
